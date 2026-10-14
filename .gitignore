@@ -218,3 +218,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# panda
+backend/.venv/
+backend/data/
+frontend/node_modules/
+frontend/.next/
+.env
+.claude/
+
+.idea/

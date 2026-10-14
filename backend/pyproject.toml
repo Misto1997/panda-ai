@@ -1,0 +1,15 @@
+[project]
+name = "panda-backend"
+version = "0.1.0"
+description = "PANDA: Prompt-driven Analytics & Natural Data Access"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi", "uvicorn[standard]", "pydantic", "pydantic-settings", "duckdb", "sqlglot", "numpy", "pyyaml",
+  "langgraph", "langgraph-checkpoint-postgres", "psycopg[binary,pool]", "langchain-google-genai",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "httpx"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
