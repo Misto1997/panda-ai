@@ -1,0 +1,10 @@
+# Optional locally: Postgres + pgvector for the checkpointer and hybrid search.
+# Without it PANDA falls back to in-memory search and checkpointing (zero infra).
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment: { POSTGRES_USER: panda, POSTGRES_PASSWORD: panda, POSTGRES_DB: panda }
+    ports: ["5433:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U panda"], interval: 5s, retries: 10 }
+volumes: { pgdata: {} }
