@@ -228,3 +228,7 @@ frontend/.next/
 .claude/
 
 .idea/
+
+# frontend build artefacts
+frontend/next-env.d.ts
+*.tsbuildinfo

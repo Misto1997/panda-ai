@@ -1,131 +1,68 @@
-"""Loads the file-based semantic layer (markdown + YAML frontmatter) into a typed catalog."""
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
-from functools import lru_cache
-from pathlib import Path
 
-import yaml
-
-from app.config import get_settings
-
-_FM = re.compile(r"\A---\n(.*?)\n---\n?(.*)\Z", re.S)
-
-
-@dataclass
-class Doc:
-    """One searchable chunk of the semantic layer."""
-    id: str
-    kind: str
-    title: str
-    text: str  # what gets indexed
-    meta: dict = field(default_factory=dict)
-
-
-@dataclass
-class Metric:
-    id: str
-    title: str
-    table: str
-    aliases: list[str]
-    description: str
-    expr: str | None
-    numerator: str | None
-    denominator: str | None
-    unit: str
-    format: str
-    direction: str
-    dimensions: list[str]
-
-    @property
-    def is_ratio(self) -> bool:
-        return self.numerator is not None
-
-
-@dataclass
-class Dimension:
-    id: str
-    title: str
-    column: str
-    tables: list[str]
-    aliases: list[str]
-    values: list[str]
-
-
-@dataclass
-class Table:
-    id: str
-    raw: str
-    rollup: str
-    time_column: str
-    rollup_dimensions: list[str]
+from app.core.errors import CatalogError, QueryValidationError
+from app.semantic.models import (CheckSpec, DimensionSpec, Doc, MetricSpec, PolicySpec, RcaTreeSpec, TableSpec)
 
 
 @dataclass
 class Catalog:
-    metrics: dict[str, Metric]
-    dimensions: dict[str, Dimension]
-    tables: dict[str, Table]
-    trees: dict[str, dict]
-    checks: dict[str, dict]
-    policies: dict[str, dict]
-    docs: list[Doc]
+    metrics: dict[str, MetricSpec] = field(default_factory=dict)
+    dimensions: dict[str, DimensionSpec] = field(default_factory=dict)
+    tables: dict[str, TableSpec] = field(default_factory=dict)
+    trees: dict[str, RcaTreeSpec] = field(default_factory=dict)
+    checks: dict[str, CheckSpec] = field(default_factory=dict)
+    policies: dict[str, PolicySpec] = field(default_factory=dict)
+    docs: list[Doc] = field(default_factory=list)
 
-    def metric_by_name(self, name: str) -> Metric | None:
-        n = name.strip().lower().replace(" ", "_")
-        if n in self.metrics:
-            return self.metrics[n]
+    def metric(self, metric_id: str) -> MetricSpec:
+        try:
+            return self.metrics[metric_id]
+        except KeyError:
+            raise QueryValidationError(f"Unknown metric '{metric_id}'.") from None
+
+    def dimension(self, dim_id: str) -> DimensionSpec:
+        try:
+            return self.dimensions[dim_id]
+        except KeyError:
+            raise QueryValidationError(f"Unknown dimension '{dim_id}'.") from None
+
+    def tree_for(self, metric_id: str) -> RcaTreeSpec | None:
+        return next((t for t in self.trees.values() if t.root_metric == metric_id), None)
+
+    def anchor_table(self) -> TableSpec:
+        anchors = [t for t in self.tables.values() if t.anchor]
+        if len(anchors) != 1:
+            raise CatalogError("exactly one table must set `anchor: true`")
+        return anchors[0]
+
+    def physical_tables(self) -> set[str]:
+        return {name for t in self.tables.values() for name in (t.raw, t.rollup)}
+
+    def validate_references(self) -> None:
+        """Cross-file integrity: every id a file points to must exist."""
+        errs: list[str] = []
         for m in self.metrics.values():
-            if n in {a.lower().replace(" ", "_") for a in m.aliases} or n == m.title.lower().replace(" ", "_"):
-                return m
-        return None
-
-    def tree_for(self, metric_id: str) -> dict | None:
-        return next((t for t in self.trees.values() if t["root_metric"] == metric_id), None)
-
-
-def _parse(path: Path) -> tuple[dict, str]:
-    m = _FM.match(path.read_text())
-    if not m:
-        raise ValueError(f"{path}: missing frontmatter")
-    return yaml.safe_load(m.group(1)), m.group(2).strip()
-
-
-@lru_cache
-def load_catalog(semantic_dir: str | None = None) -> Catalog:
-    root = Path(semantic_dir or get_settings().semantic_dir)
-    cat = Catalog({}, {}, {}, {}, {}, {}, [])
-    for path in sorted(root.rglob("*.md")):
-        fm, body = _parse(path)
-        kind = fm["kind"]
-        if kind == "metric":
-            m = Metric(fm["id"], fm["title"], fm["table"], fm.get("aliases", []), fm["description"], fm.get("expr"),
-                       fm.get("numerator"), fm.get("denominator"), fm.get("unit", ""), fm.get("format", "number"),
-                       fm.get("direction", "neutral"), fm.get("dimensions", []))
-            cat.metrics[m.id] = m
-            text = f"{m.title}. Also called {', '.join(m.aliases)}. {m.description} {body} Dimensions: {', '.join(m.dimensions)}."
-            cat.docs.append(Doc(m.id, "metric", m.title, text, {"dimensions": m.dimensions}))
-        elif kind == "dimension":
-            d = Dimension(fm["id"], fm["title"], fm["column"], fm.get("tables", []), fm.get("aliases", []), fm.get("values", []))
-            cat.dimensions[d.id] = d
-            text = f"{d.title}. Also called {', '.join(d.aliases)}. {fm['description']} Values: {', '.join(d.values)}."
-            cat.docs.append(Doc(d.id, "dimension", d.title, text))
-        elif kind == "table":
-            t = Table(fm["id"], fm["raw"], fm["rollup"], fm["time_column"], fm.get("rollup_dimensions", []))
-            cat.tables[t.id] = t
-        elif kind == "glossary":
-            for t in fm["terms"]:
-                cat.docs.append(Doc(f"glossary:{t['term']}", "glossary", t["term"],
-                                    f"{t['term']} ({t['full_form']}): {t['definition']}"))
-        elif kind == "rca_tree":
-            cat.trees[fm["id"]] = fm
-            hyp = "; ".join(h["claim"] for h in fm.get("hypotheses", []))
-            cat.docs.append(Doc(fm["id"], "rca_tree", fm["title"],
-                                f"RCA runbook: {fm['title']}. Root metric {fm['root_metric']}. {body} Hypotheses: {hyp}."))
-        elif kind == "rca_check":
-            cat.checks[fm["id"]] = fm
-            cat.docs.append(Doc(fm["id"], "rca_check", fm["title"], f"{fm['title']}: {fm['description']}"))
-        elif kind == "rca_policy":
-            cat.policies[fm["id"]] = fm
-    return cat
+            if m.table not in self.tables:
+                errs.append(f"metric {m.id}: unknown table {m.table}")
+            errs += [f"metric {m.id}: unknown dimension {d}" for d in m.dimensions if d not in self.dimensions]
+        for t in self.tables.values():
+            errs += [f"table {t.id}: unknown rollup dimension {d}" for d in t.rollup_dimensions if d not in self.dimensions]
+        for tree in self.trees.values():
+            refs = [tree.root_metric, *(tree.decomposition.components if tree.decomposition else [])]
+            for h in tree.hypotheses:
+                refs += [x for x in (h.metric, h.other_metric) if x]
+                if h.dimension and h.dimension not in self.dimensions:
+                    errs.append(f"tree {tree.id}/{h.id}: unknown dimension {h.dimension}")
+            errs += [f"tree {tree.id}: unknown metric {m}" for m in refs if m not in self.metrics]
+            errs += [f"tree {tree.id}: unknown check {c}" for c in tree.preflight if c not in self.checks]
+            errs += [f"tree {tree.id}: unknown dimension {d}" for d in [*tree.drill_dimensions, *tree.marginal_dimensions] if d not in self.dimensions]
+            if tree.policy not in self.policies:
+                errs.append(f"tree {tree.id}: unknown policy {tree.policy}")
+        for c in self.checks.values():
+            if c.metric and c.metric not in self.metrics:
+                errs.append(f"check {c.id}: unknown metric {c.metric}")
+        self.anchor_table()
+        if errs:
+            raise CatalogError("semantic layer is inconsistent:\n  " + "\n  ".join(errs))

@@ -10,42 +10,35 @@ Built for the Google AI Builder Cup, theme **Future of Work & Enterprise Product
 
 | Capability | How |
 |---|---|
-| **Ask** ("GMV by region last 7 days") | LLM extracts a structured intent (`QueryIR`) using retrieved semantic context; code compiles SQL from governed definitions; a guard validates it; the engine runs it |
-| **Investigate** ("Why did GMV drop?") | Runbook-driven RCA: exact log-ratio decomposition (traffic x conversion x AOV), segment drill-down, hypothesis tests (funnel walk, metric shift), preflight data checks. The LLM only narrates computed facts |
-| **Learn** ("What is AOV?") | Hybrid retrieval over metrics, dimensions, glossary and runbooks |
-| **Be fast** | Queries use a daily rollup when possible, raw tables otherwise; two-layer semantic cache (question to intent, resolved intent to result) |
-| **Follow-ups** | Per-thread memory: "and by channel?" modifies the previous intent |
+| **Ask** ("Net GMV by zone last 7 days") | LLM extracts a structured intent (`QueryIR`) from retrieved semantic context; code compiles SQL from governed definitions; a guard validates it; the engine runs it |
+| **Investigate** ("Why did visits drop?") | Runbook-driven RCA: exact decomposition, segment drill-down (zone, region, state, city), 4-5 hypothesis tests per runbook, preflight data checks. The LLM only narrates computed facts |
+| **Learn** ("What is BU visits?") | Hybrid retrieval over metrics, dimensions, glossary and runbooks |
+| **Be fast** | Daily rollups when possible, raw tables otherwise; two-layer semantic cache (question to intent, resolved intent to result) |
+| **Follow-ups** | Per-thread memory: "and by marketplace?" modifies the previous intent |
+
+## The demo domain
+
+13 metrics (Net/Gross GMV, Net/Gross Units, Orders, ASP, Gross AOV, Net-to-Gross, Cancellation Rate, Visits, Conversion, BU Visits, BU Conversion) and 6 dimensions (Marketplace, Business Unit, Zone > Region > State > City). 20M synthetic orders with three planted problems, one per RCA runbook:
+
+| Ask | Planted cause the RCA should find |
+|---|---|
+| "Why did Net GMV drop in the last 14 days?" | Cancellation spike in Acme Express x South |
+| "Why did visits drop in the last 14 days?" | Visit-tracking loss in Acme Mall x East (orders unchanged, conversion rises artificially) |
+| "Why did ASP drop in the last 14 days?" | Business-unit mix shift to Grocery in Acme Wholesale x North |
+| "Why did conversion rate change?" | Same tracking loss, seen through the conversion denominator |
 
 ## Architecture
 
 ```
-Browser: Next.js UI  --SSE-->  Next.js BFF (/api/chat)  -->  FastAPI gateway (/api/chat)
-                                                                   |
-                                                             LangGraph workflow
-          route -> plan -> execute -> respond (data questions) | rca | discover | help
-                     |         |
-        hybrid search      QueryIR -> compiler -> guard -> engine (DuckDB | BigQuery*)
-   (BM25/FTS + vectors, RRF)          semantic cache (question->IR, IR->result)
-                     |
-               semantic/  (markdown + YAML: metrics, dimensions, glossary, RCA runbooks)
+Next.js UI + BFF --SSE--> FastAPI gateway --> LangGraph workflow --> Gemini (or offline mock)
+                                               route -> plan -> execute -> respond | rca | discover | help
+                          hybrid search (BM25/FTS + vectors, RRF) over semantic/
+                          QueryIR -> compiler -> guard -> cache -> engine (DuckDB | BigQuery*)
+                          RcaInvestigator (decomposition, drill, hypotheses, checks)
 ```
-\* BigQuery, Cloud Run, Vertex AI and Google login land in phase 2.
+\* BigQuery, Cloud Run, Vertex AI, Google login: phase 2.
 
-Design choices that matter:
-- **Governed, not generative, SQL.** The model picks metrics/dimensions; the compiler owns SQL. The guard (sqlglot) allows only a single read-only SELECT on approved tables and caps rows.
-- **Hybrid retrieval.** Lexical search handles ids and abbreviations; vectors handle paraphrase; reciprocal rank fusion merges them; matched metrics pull in their allowed dimensions.
-- **Offline-capable.** `LLM_PROVIDER=mock` runs the whole pipeline with no credentials: development, tests and a safe demo fallback.
-- **Pluggable engine.** DuckDB locally, BigQuery next; the production-scale story (rollups, materialized views) is the same.
-
-## Repository layout
-
-```
-semantic/        Governed layer: metrics/, dimensions/, tables/, glossary/, rca/{trees,checks,policies}
-backend/         FastAPI gateway, LangGraph agents, compiler/guard, RCA, search, cache, tests
-frontend/        Next.js 15 UI + BFF
-docs/PLAN.md     Hackathon plan, decisions, Google access list, schedule
-AGENTS.md        Orientation for coding agents and new contributors
-```
+Full diagrams, class roles, retrieval, RCA maths, SSE and scale notes: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**. UI stack, BFF and file-by-file guide: **[docs/FRONTEND_GUIDE.md](docs/FRONTEND_GUIDE.md)**.
 
 ## Quick start
 
@@ -53,19 +46,22 @@ Requirements: Python 3.12, Node 20+. Docker is optional.
 
 ```bash
 make setup     # venv + npm install
-make data      # 20M synthetic orders into backend/data/panda.duckdb (~3 s)
+make data      # 20M synthetic orders into backend/data/panda.duckdb (~20 s)
 make api       # gateway on http://localhost:8000
-make web       # UI on http://localhost:3000   (in a second terminal)
+make web       # UI on http://localhost:3000   (second terminal)
 make test      # backend tests
 ```
 
-Try these in the UI:
-1. "GMV by region for the last 7 days"
-2. "Daily conversion rate by channel last 14 days"
-3. "Why did GMV drop in the last 14 days?" The synthetic data contains a planted West/Android checkout failure; the RCA should find it (about 99% of the movement)
-4. "What is checkout completion rate?"
+Speed demo: tick **Force raw table scan** (skip the rollup) or **Bypass semantic cache** and compare the query-time chips; repeat a question without bypassing to see a cache hit.
 
-Speed demo: tick **Force raw table scan** to skip the rollup, **Bypass semantic cache** to skip caching, and compare the query time chips.
+## Tracing and debugging
+
+```bash
+make ask Q="why did visits drop in the last 14 days?"            # live step trace in the terminal
+make ask Q="net gmv by zone last 7 days" DEBUG=1                 # + DEBUG logs, generated SQL, model output
+make api-debug                                                    # server with DEBUG logs and payloads
+```
+Every HTTP request carries an `X-Request-Id` that appears on each log line. Expand "N steps" under an answer in the UI for per-step timings and cache hits. Optional LangSmith tracing: set `LANGSMITH_TRACING=true` and `LANGSMITH_API_KEY`. More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#9-tracing-and-debugging).
 
 ## Configuration
 
@@ -75,35 +71,45 @@ Copy `.env.example` to `.env`.
 |---|---|
 | `LLM_PROVIDER` | `mock` (default, offline) or `gemini` |
 | `GOOGLE_API_KEY` | AI Studio key for `gemini`; for Vertex AI set `GOOGLE_GENAI_USE_VERTEXAI=true`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION` |
-| `GEMINI_MODEL`, `GEMINI_PRO_MODEL`, `EMBEDDING_MODEL` | Model names (verify availability for your project) |
+| `GEMINI_MODEL`, `GEMINI_PRO_MODEL`, `EMBEDDING_MODEL` | Model names (unverified defaults; check availability) |
 | `ENGINE` | `duckdb` (BigQuery in phase 2) |
-| `DATABASE_URL` | Optional Postgres. When set: pgvector + full-text hybrid search and Postgres LangGraph checkpointer. Run `make up` then `make ingest` |
-| `GATEWAY_URL` | Frontend env: gateway address (default `http://localhost:8000`) |
+| `DATABASE_URL` | Optional Postgres: pgvector + full-text search and a Postgres LangGraph checkpointer. `make up`, then `make ingest` |
+| `LOG_LEVEL`, `TRACE_PAYLOADS` | Logging verbosity; `TRACE_PAYLOADS` adds SQL and model output to DEBUG logs |
+| `GATEWAY_URL` | Frontend: gateway address (default `http://localhost:8000`) |
 
 ## API
 
 - `POST /api/chat` `{question, thread_id?, force_raw?, bypass_cache?}` returns an SSE stream: `run_started`, `step`*, `result`, `run_finished` (or `error`).
-- `GET /api/meta` runtime info, metric list, suggestions, cache stats.
-- `POST /api/cache/clear`, `GET /health`.
+- `GET /api/meta` runtime info, metrics, suggestions, cache stats. `GET /health`, `GET /ready`.
+- `POST /api/admin/cache/clear`, `GET /api/admin/cache/stats`.
 
-## Extending the semantic layer
+## Repository layout
 
-Add a file, no code change needed:
-- Metric: `semantic/metrics/<id>.md` with `kind: metric`, `table`, `expr` (or `numerator`/`denominator` for ratios), `dimensions`.
-- RCA runbook: `semantic/rca/trees/<id>.md` with `root_metric`, optional `decomposition`, `drill_dimensions`, `hypotheses`.
-- Restart the API (catalog is loaded at startup); with Postgres, re-run `make ingest`.
+```
+semantic/      Governed layer: metrics, dimensions, tables, glossary, rca/{trees,checks,policies}
+backend/       app/ (core, semantic, search, llm, prompts, engines, query, cache, rca, agents, api), scripts/, tests/
+frontend/      Next.js UI + BFF
+docs/          ARCHITECTURE.md, FRONTEND_GUIDE.md
+AGENTS.md      Orientation and rules for coding agents and new contributors
+```
+
+## Extending
+
+- **Metric or runbook:** add a markdown file under `semantic/`; the loader validates cross-references at startup.
+- **Engine, LLM, search backend, graph node, hypothesis type:** implement the port or subclass, register it. See the pattern table in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#8-patterns-and-where-to-extend).
 
 ## Status
 
 | Area | State |
 |---|---|
-| Semantic layer, compiler, guard, cache, RCA, workflow, gateway, UI | done and tested (`make test`) |
+| Semantic layer, compiler, guard, cache, RCA (4 runbooks), workflow, gateway, UI | done, tested (`make test`, 33 tests) |
 | Mock LLM end to end | verified |
 | Gemini with real credentials | written, **not yet run** |
 | Postgres / pgvector / Postgres checkpointer | written, **not yet run** |
-| BigQuery engine, Cloud Run deploy, Google login and roles, Gemma router, benchmark, deck, demo video | phase 2 and 3, see `docs/PLAN.md` |
+| Load behaviour of the SSE gateway | **not load tested** |
+| BigQuery engine, Cloud Run deploy, Google login and row-level scope, Gemma router, benchmark, deck, demo video | phase 2 and 3 |
 
-Known gaps: BigQuery `DATE_TRUNC` transpile needs a fix, gateway has no auth yet (dev only), cache is in-process, local rollup speedup is modest on DuckDB and should be larger on BigQuery.
+Known gaps: no authentication on the gateway; cache and checkpointer are in-process unless `DATABASE_URL` is set; BigQuery date-truncation transpile needs care.
 
 ## License
 

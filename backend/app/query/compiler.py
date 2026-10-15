@@ -1,115 +1,136 @@
-"""Compile a QueryIR to SQL using only governed definitions from the semantic layer."""
+"""Compiles a QueryIR into SQL using only governed definitions from the semantic layer."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
 
+from app.core.enums import QueryMode, TimeGrain
+from app.core.errors import QueryValidationError
 from app.query.ir import QueryIR
-from app.query.timeutil import resolve
-from app.semantic.catalog import Catalog, Metric
+from app.query.period import Period, PeriodResolver
+from app.semantic.catalog import Catalog
+from app.semantic.models import MetricSpec, TableSpec
+
+DATE_ALIAS = "date"
 
 
-class IRError(ValueError):
-    """User-facing: the question cannot be answered with the governed semantic layer."""
-
-
-@dataclass
-class Compiled:
+@dataclass(frozen=True)
+class CompiledQuery:
     sql: str
     sources: dict[str, str]  # logical table -> physical table used
     columns: list[str]
-    start: date
-    end: date
+    period: Period
 
 
-def metric_expr(m: Metric) -> str:
-    return m.expr if not m.is_ratio else f"CAST({m.numerator} AS DOUBLE) / NULLIF({m.denominator}, 0)"
+class QueryCompiler:
+    def __init__(self, catalog: Catalog) -> None:
+        self.cat = catalog
 
+    # ---- public ----
+    def compile(self, ir: QueryIR, resolver: PeriodResolver, mode: QueryMode = QueryMode.AUTO,
+                split_ratios: bool = False) -> CompiledQuery:
+        """split_ratios: emit numerator/denominator columns for ratio metrics instead of the ratio (used by RCA)."""
+        self.validate(ir)
+        period = resolver.resolve(ir.time_expr)
+        needed = set(ir.dimensions) | {f.dim for f in ir.filters}
+        keys = ([DATE_ALIAS] if ir.grain != TimeGrain.NONE else []) + list(ir.dimensions)
 
-def validate(ir: QueryIR, cat: Catalog) -> None:
-    if not ir.metrics:
-        raise IRError("No metric identified. Ask about a metric such as GMV, orders, AOV or conversion rate.")
-    for mid in ir.metrics:
-        if mid not in cat.metrics:
-            raise IRError(f"Unknown metric '{mid}'.")
-    for d in ir.dimensions + [f.dim for f in ir.filters]:
-        if d not in cat.dimensions or d == "date":
-            raise IRError(f"Unknown dimension '{d}'.")
+        ctes, sources, columns = [], {}, list(keys)
+        for table_id, metrics in self._group_by_table(ir).items():
+            table = self.cat.tables[table_id]
+            physical = table.rollup if mode == QueryMode.AUTO and needed <= set(table.rollup_dimensions) else table.raw
+            sources[table_id] = physical
+            select, cols = self._select(ir, table, metrics, split_ratios)
+            columns += cols
+            ctes.append((table_id, self._table_query(ir, table, physical, period, select)))
+
+        body = self._combine(ctes, keys)
+        return CompiledQuery(f"SELECT * FROM ({body}) q{self._order(ir, split_ratios)}", sources, columns, period)
+
+    def validate(self, ir: QueryIR) -> None:
+        if not ir.metrics:
+            raise QueryValidationError("No metric identified. Ask about a metric such as Net GMV, orders, ASP or visits.")
         for mid in ir.metrics:
-            if d not in cat.metrics[mid].dimensions:
-                raise IRError(f"Metric '{mid}' cannot be sliced by '{d}'. Available: {', '.join(cat.metrics[mid].dimensions)}.")
-    for f in ir.filters:
-        known = {v.lower(): v for v in cat.dimensions[f.dim].values}
-        bad = [v for v in f.values if known and v.lower() not in known]
-        if bad:
-            raise IRError(f"Unknown value(s) {bad} for {f.dim}. Valid: {', '.join(known.values())}.")
-        f.values = [known.get(v.lower(), v) for v in f.values] if known else f.values
-    if ir.order_by and ir.order_by not in ir.metrics:
-        ir.order_by = None
-
-
-def _lit(v: str) -> str:
-    return "'" + v.replace("'", "''") + "'"
-
-
-def compile_ir(ir: QueryIR, cat: Catalog, anchor: date, mode: str = "auto",
-               select_parts: bool = False) -> Compiled:
-    """mode: auto (rollup when possible) | raw (force raw fact tables).
-    select_parts: emit numerator/denominator columns for ratio metrics (used by RCA)."""
-    validate(ir, cat)
-    start, end = resolve(ir.time_expr, anchor)
-    dims = list(ir.dimensions)
-    needed = set(dims) | {f.dim for f in ir.filters}
-
-    by_table: dict[str, list[Metric]] = {}
-    for mid in ir.metrics:
-        by_table.setdefault(cat.metrics[mid].table, []).append(cat.metrics[mid])
-
-    ctes, sources, outcols = [], {}, ([ "date"] if ir.grain != "none" else []) + dims
-    for tid, metrics in by_table.items():
-        t = cat.tables[tid]
-        physical = t.rollup if (mode == "auto" and needed <= set(t.rollup_dimensions)) else t.raw
-        sources[tid] = physical
-        tc = t.time_column
-        sel, grp = [], []
-        if ir.grain != "none":
-            sel.append(f"DATE_TRUNC('{ir.grain}', {tc}) AS date")
-            grp.append("1")
-        for d in dims:
-            sel.append(cat.dimensions[d].column)
-        grp += [str(i + 1 + (1 if ir.grain != "none" else 0)) for i in range(len(dims))]
-        for m in metrics:
-            if select_parts and m.is_ratio:
-                sel += [f"{m.numerator} AS {m.id}__num", f"{m.denominator} AS {m.id}__den"]
-                outcols += [f"{m.id}__num", f"{m.id}__den"]
-            else:
-                sel.append(f"{metric_expr(m)} AS {m.id}")
-                outcols.append(m.id)
-        where = [f"{tc} >= DATE '{start}'", f"{tc} < DATE '{end}'"]
+            self.cat.metric(mid)
+        for dim in [*ir.dimensions, *(f.dim for f in ir.filters)]:
+            if dim == DATE_ALIAS:
+                raise QueryValidationError("Use a time period or grain instead of the date dimension.")
+            self.cat.dimension(dim)
+            for mid in ir.metrics:
+                allowed = self.cat.metric(mid).dimensions
+                if dim not in allowed:
+                    raise QueryValidationError(
+                        f"{self.cat.metric(mid).title} cannot be sliced by {self.cat.dimension(dim).title}. "
+                        f"Available: {', '.join(allowed)}.")
         for f in ir.filters:
-            col = cat.dimensions[f.dim].column
-            where.append(f"{col} {'NOT ' if f.negate else ''}IN ({', '.join(_lit(v) for v in f.values)})")
-        ctes.append((tid, f"SELECT {', '.join(sel)} FROM {physical} WHERE {' AND '.join(where)}"
-                          + (f" GROUP BY {', '.join(grp)}" if grp else "")))
+            known = {v.lower(): v for v in self.cat.dimension(f.dim).values}
+            bad = [v for v in f.values if known and v.lower() not in known]
+            if bad:
+                raise QueryValidationError(f"Unknown value(s) {bad} for {f.dim}. Examples: {', '.join(list(known.values())[:8])}.")
+            if not f.values:
+                raise QueryValidationError(f"Filter on {f.dim} has no values.")
+            f.values = [known.get(v.lower(), v) for v in f.values] if known else f.values
+        if ir.order_by and ir.order_by not in ir.metrics:
+            ir.order_by = None  # ordering by a metric that is not selected is ignored, not an error
 
-    keys = (["date"] if ir.grain != "none" else []) + dims
-    if len(ctes) == 1:
-        body = ctes[0][1]
-    else:
-        with_ = ", ".join(f"{tid} AS ({q})" for tid, q in ctes)
+    # ---- building blocks ----
+    @staticmethod
+    def metric_sql(metric: MetricSpec) -> str:
+        if not metric.is_ratio:
+            return metric.expr
+        return f"CAST({metric.numerator} AS DOUBLE) / NULLIF({metric.denominator}, 0)"
+
+    def _group_by_table(self, ir: QueryIR) -> dict[str, list[MetricSpec]]:
+        groups: dict[str, list[MetricSpec]] = {}
+        for mid in dict.fromkeys(ir.metrics):
+            metric = self.cat.metric(mid)
+            groups.setdefault(metric.table, []).append(metric)
+        return groups
+
+    def _select(self, ir: QueryIR, table: TableSpec, metrics: list[MetricSpec], split: bool) -> tuple[list[str], list[str]]:
+        select, cols = [], []
+        if ir.grain != TimeGrain.NONE:
+            select.append(f"DATE_TRUNC('{ir.grain.value}', {table.time_column}) AS {DATE_ALIAS}")
+        select += [self.cat.dimension(d).column for d in ir.dimensions]
+        for m in metrics:
+            if split and m.is_ratio:
+                select += [f"{m.numerator} AS {m.id}__num", f"{m.denominator} AS {m.id}__den"]
+                cols += [f"{m.id}__num", f"{m.id}__den"]
+            else:
+                select.append(f"{self.metric_sql(m)} AS {m.id}")
+                cols.append(m.id)
+        return select, cols
+
+    def _table_query(self, ir: QueryIR, table: TableSpec, physical: str, period: Period, select: list[str]) -> str:
+        where = [f"{table.time_column} >= DATE '{period.start}'", f"{table.time_column} < DATE '{period.end}'"]
+        for f in ir.filters:
+            values = ", ".join(_literal(v) for v in f.values)
+            where.append(f"{self.cat.dimension(f.dim).column} {'NOT ' if f.negate else ''}IN ({values})")
+        n_keys = (1 if ir.grain != TimeGrain.NONE else 0) + len(ir.dimensions)
+        group = f" GROUP BY {', '.join(str(i + 1) for i in range(n_keys))}" if n_keys else ""
+        return f"SELECT {', '.join(select)} FROM {physical} WHERE {' AND '.join(where)}{group}"
+
+    @staticmethod
+    def _combine(ctes: list[tuple[str, str]], keys: list[str]) -> str:
+        if len(ctes) == 1:
+            return ctes[0][1]
+        with_ = ", ".join(f"{name} AS ({query})" for name, query in ctes)
         first = ctes[0][0]
-        joins = "".join(
-            f" FULL OUTER JOIN {tid} USING ({', '.join(keys)})" if keys else f" CROSS JOIN {tid}"
-            for tid, _ in ctes[1:])
-        body = f"WITH {with_} SELECT * FROM {first}{joins}"
-    order = ""
-    if select_parts:
-        pass
-    elif ir.order_by:
-        order = f" ORDER BY {ir.order_by} {'DESC' if ir.order_desc else 'ASC'}"
-    elif ir.grain != "none":
-        order = " ORDER BY date"
-    elif dims and ir.metrics:
-        order = f" ORDER BY {ir.metrics[0]} DESC"
-    sql = f"SELECT * FROM ({body}) q{order}"
-    return Compiled(sql, sources, outcols, start, end)
+        joins = "".join(f" FULL OUTER JOIN {name} USING ({', '.join(keys)})" if keys else f" CROSS JOIN {name}"
+                        for name, _ in ctes[1:])
+        return f"WITH {with_} SELECT * FROM {first}{joins}"
+
+    @staticmethod
+    def _order(ir: QueryIR, split: bool) -> str:
+        if split:
+            return ""
+        if ir.order_by:
+            return f" ORDER BY {ir.order_by} {'DESC' if ir.order_desc else 'ASC'}"
+        if ir.grain != TimeGrain.NONE:
+            return f" ORDER BY {DATE_ALIAS}"
+        if ir.dimensions:
+            return f" ORDER BY {ir.metrics[0]} DESC"
+        return ""
+
+
+def _literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"

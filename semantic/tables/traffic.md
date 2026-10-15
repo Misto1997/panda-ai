@@ -1,11 +1,15 @@
 ---
 kind: table
 id: traffic
-title: Traffic and funnel
-description: Daily sessions, checkout starts and orders per region and channel. Used for conversion and funnel analysis.
-raw: agg_traffic_daily
-rollup: agg_traffic_daily
-time_column: event_date
-rollup_dimensions: [region, channel]
+title: Traffic
+description: Daily site visits and orders per marketplace and location. Visits are not attributed to a business unit.
+raw: agg_traffic_city_daily
+rollup: agg_traffic_state_daily
+time_column: visit_date
+rollup_dimensions:
+- marketplace
+- zone
+- region
+- state
 ---
-Already a daily aggregate. Only region and channel are available.
+Raw: city grain. Rollup: state grain.

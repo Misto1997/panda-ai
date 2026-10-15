@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, Field
+
+from app.core.enums import TimeGrain
 
 
 class Filter(BaseModel):
@@ -19,7 +19,7 @@ class QueryIR(BaseModel):
     time_expr: str = Field(default="last_30_days", description=(
         "One of: today, yesterday, last_7_days, last_14_days, last_30_days, last_90_days, this_week, last_week, "
         "this_month, last_month, mtd, all_time, last_n_days:N, or an explicit range YYYY-MM-DD..YYYY-MM-DD"))
-    grain: Literal["none", "day", "week", "month"] = Field(default="none", description="Time series grain; none = single aggregate")
+    grain: TimeGrain = Field(default=TimeGrain.NONE, description="Time series grain; none = single aggregate")
     order_by: str | None = Field(default=None, description="Metric id to sort by")
     order_desc: bool = True
-    limit: int | None = None
+    limit: int | None = Field(default=None, ge=1, le=500)

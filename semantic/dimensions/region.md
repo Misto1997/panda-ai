@@ -2,10 +2,26 @@
 kind: dimension
 id: region
 title: Region
-aliases: [geo, zone, area]
-description: Sales region of the order.
+aliases:
+- regions
+- area
+- cluster
+description: Second geography level, inside a zone.
 column: region
-tables: [orders, traffic]
-values: [North, South, East, West]
+tables:
+- sales
+- traffic
+- bu_traffic
+values:
+- NCR
+- Northern Plains
+- South West
+- South East
+- East Coast
+- Eastern Plains
+- West Coast
+- Western Plains
+parent: zone
+children: state
 ---
-Sales region of the order.
+Second geography level, inside a zone.

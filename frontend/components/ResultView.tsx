@@ -5,6 +5,8 @@ import Markdown from "./Markdown";
 import { fmt, pct } from "@/lib/format";
 import type { Rca, Result } from "@/lib/types";
 
+const DIM_ORDER = ["marketplace", "zone", "region", "state", "city", "business_unit"];
+
 function Chips({ meta }: { meta: Result["meta"] }) {
   const chips: [string, string, string?][] = [];
   if (meta.engine) chips.push(["engine", meta.engine]);
@@ -42,19 +44,29 @@ function RcaPanel({ r }: { r: Rca }) {
   return (
     <div className="rca">
       {r.checks.some((c) => c.fired) && <div className="warn-box">{r.checks.filter((c) => c.fired).map((c) => `${c.title}: ${c.detail}`).join(" · ")}</div>}
-      <h4>Decomposition <span className="muted">{r.title} split into its multiplicative drivers (exact log-ratio attribution)</span></h4>
-      <table><thead><tr><th>Driver</th><th>Baseline</th><th>Current</th><th>Change</th><th>Contribution</th></tr></thead>
-        <tbody>{r.decomposition.map((d) => (
-          <tr key={d.component}><td>{d.component}</td><td className="num">{fmt(d.baseline, d.component.includes("rate") ? "percent" : d.component === "aov" ? "currency" : "number")}</td>
-            <td className="num">{fmt(d.current, d.component.includes("rate") ? "percent" : d.component === "aov" ? "currency" : "number")}</td>
-            <td className={`num ${d.rel && d.rel < 0 ? "neg" : "pos"}`}>{pct(d.rel)}</td><td className="num">{fmt(d.contribution, r.format)}</td></tr>))}</tbody></table>
-      <h4>Where it happened <span className="muted">top segments by share of the change in {r.drill_metric}</span></h4>
+      {r.decomposition.length > 0 && (
+        <>
+          <h4>Decomposition <span className="muted">{r.title} split into its multiplicative drivers (exact log-ratio attribution)</span></h4>
+          <table><thead><tr><th>Driver</th><th>Baseline</th><th>Current</th><th>Change</th><th>Contribution</th></tr></thead>
+            <tbody>{r.decomposition.map((d) => (
+              <tr key={d.component}><td>{d.title}</td><td className="num">{fmt(d.baseline, d.format)}</td><td className="num">{fmt(d.current, d.format)}</td>
+                <td className={`num ${d.rel && d.rel < 0 ? "neg" : "pos"}`}>{pct(d.rel)}</td><td className="num">{fmt(d.contribution, r.format)}</td></tr>))}</tbody></table>
+        </>)}
+      <h4>Where it happened <span className="muted">top segments by share of the change in {r.drill_metric.replaceAll("_", " ")}</span></h4>
       {r.drill.cells.map((c, i) => (
         <div key={i} className="bar-row">
           <span className="bar-label">{seg(c.segment)}</span>
           <div className="bar-track"><div className="bar-fill" style={{ width: `${Math.min(100, Math.abs((c.share_of_change ?? 0) * 100))}%` }} /></div>
           <span className="bar-val">{c.share_of_change === null ? "" : `${(c.share_of_change * 100).toFixed(0)}%`} · {pct(c.rel)}</span>
         </div>))}
+      {Object.keys(r.drill.marginals).length > 0 && (
+        <>
+          <h4>One dimension at a time <span className="muted">largest single segment per dimension</span></h4>
+          <div className="chips">
+            {Object.entries(r.drill.marginals).sort(([a], [b]) => DIM_ORDER.indexOf(a) - DIM_ORDER.indexOf(b)).map(([dim, m]) => (
+              <span key={dim} className="chip"><b>{dim.replace("_", " ")}</b> {m.segment[dim]} · {m.share_of_change === null ? "" : `${(m.share_of_change * 100).toFixed(0)}%`}</span>))}
+          </div>
+        </>)}
       <h4>Hypotheses tested</h4>
       {r.hypotheses.map((h) => (
         <div key={h.id} className="hyp"><span className={`badge ${h.status}`}>{h.status}</span> <b>{h.claim}</b><div className="muted">{h.evidence}</div></div>))}
