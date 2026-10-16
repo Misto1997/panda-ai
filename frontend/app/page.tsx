@@ -193,7 +193,7 @@ export default function Home() {
         <ul className="features">{FEATURES.map(([t, d]) => <li key={t}><b>{t}</b><span>{d}</span></li>)}</ul>
         <button onClick={auth.signIn}>Sign in with Google</button>
         {auth.error && <div className="err">{auth.error}</div>}
-        <div className="notice">Synthetic Acme Retail demo data</div>
+        <div className="notice">Synthetic Acme Retail sample data</div>
       </div>
     );
   }
@@ -243,7 +243,7 @@ export default function Home() {
           <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Ask a question" placeholder="Ask about Net GMV, visits, ASP… or “why did Net GMV drop?”" autoFocus />
           <button disabled={busy || !q.trim()} aria-label="Send question" title="Send"><SendIcon /></button>
         </form>
-        <div className="notice">Synthetic Acme Retail demo data</div>
+        <div className="notice">Synthetic Acme Retail sample data</div>
       </main>
     </div>
   );

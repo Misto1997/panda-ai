@@ -1,4 +1,4 @@
-"""Rule-based stand-in for the LLM: offline demo fallback and deterministic test double.
+"""Rule-based stand-in for the LLM: offline fallback and deterministic test double.
 It only understands the vocabulary passed in LlmContext, exactly like the real planner."""
 from __future__ import annotations
 

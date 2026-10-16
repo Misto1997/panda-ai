@@ -1,4 +1,4 @@
-"""Black-box probe of a running PANDA AI (local or deployed): runs demo questions of every kind over the AG-UI stream and reports
+"""Black-box probe of a running PANDA AI (local or deployed): runs sample questions of every kind over the AG-UI stream and reports
 latency (total, time to first event, per step), dead gaps the user would stare at, cache effect, payload size, multi-turn growth in one
 thread versus fresh threads, and concurrency. Needs only `httpx` (a dev dependency).
 

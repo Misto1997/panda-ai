@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Put a free Firebase Hosting address (https://<site>.web.app) in front of the Cloud Run web service.
 #   HOSTING_SITE=panda-ai deploy/70-hosting.sh        (needs: npm i -g firebase-tools, firebase login)
-# Cost: the .web.app address and Hosting are free at demo volume; the project must be on the Blaze plan (billing is linked already).
+# Cost: the .web.app address and Hosting are free at low volume; the project must be on the Blaze plan (billing is linked already).
 # CAVEAT: Hosting proxies to Cloud Run with a request time limit (about 60 s, UNVERIFIED) and may buffer: confirm streaming with
 #   make probe API=<api url> WEB=https://<site>.web.app ARGS="--via-web --quick"
 # Afterwards add <site>.web.app and <site>.firebaseapp.com to Firebase Authentication > Settings > Authorized domains.

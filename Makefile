@@ -56,7 +56,7 @@ gcp-build:        ## Cloud Build both images
 gcp-deploy:       ## deploy API then web to Cloud Run
 	deploy/20-deploy-api.sh && deploy/30-deploy-web.sh
 
-gcp-bootstrap:    ## Cloud Run Jobs: load BigQuery, index AlloyDB, warm cache (STEP=data|index|warm|all)
+gcp-bootstrap:    ## Cloud Run Jobs: load BigQuery, index AlloyDB, warm cache (STEP=data|index|warm|all; STEP=accuracy runs the golden benchmark on the deployed stack)
 	deploy/40-bootstrap-job.sh $(or $(STEP),all)
 
 gcp-budget:       ## budget alerts + kill-switch

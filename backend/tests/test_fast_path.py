@@ -271,3 +271,13 @@ def test_unusable_judge_output_falls_back_to_the_planner(container, monkeypatch)
     monkeypatch.setattr(container.llm, "agent_step", down)
     out, _ = _ask(container, "tell me something interesting", "t-judge-down")
     assert out["type"] == "error" and "busy" in out["text"]
+
+
+def test_golden_items_follow_a_rolled_forward_data_window():
+    from app.bench import load_items, rebase
+
+    items = {i["id"]: i for i in load_items()["items"]}
+    moved = rebase(items["value_1"], 15)
+    assert "DATE '2026-10-09'" in moved["sql"] and "DATE '2026-10-16'" in moved["sql"] and moved["turns"] == items["value_1"]["turns"]
+    assert rebase(items["value_7"], 15) is None  # "net gmv last month" is calendar-aligned: not shiftable
+    assert sum(1 for i in items.values() if rebase(i, 15)) >= 20  # enough items remain for a meaningful run

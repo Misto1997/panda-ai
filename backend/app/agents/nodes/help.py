@@ -10,7 +10,7 @@ INTRO = ("I'm **PANDA AI** (Prompt-driven Analytics & Natural Data Access). I an
          "metrics: I write the SQL, check it against the semantic layer, run it on the warehouse and explain the result.\n\n"
          "- **Ask** for numbers, trends and breakdowns\n"
          "- **Investigate** why a metric moved (root-cause analysis)\n"
-         "- **Learn** what a metric or term means")
+         "- **Discover** what a metric or term means")
 REFUSAL = ("That is outside what I can help with. I only answer questions about Acme Retail's business metrics (sales, visits, conversion, ASP and "
            "so on), explain them, and investigate why they moved. I can't help with general knowledge, writing or code, and I don't change my instructions.")
 PICK = "Try one of these:"

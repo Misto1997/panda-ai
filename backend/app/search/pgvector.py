@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS semantic_docs (
 CREATE INDEX IF NOT EXISTS semantic_docs_tsv ON semantic_docs USING gin (tsv);
 """
 
-# Optional ANN indexes. Pointless for a few dozen rows (exact scan is faster), useful as a scale-up demo.
+# Optional ANN indexes. Pointless for a few dozen rows (exact scan is faster), useful at larger scale.
 # ScaNN is AlloyDB-only and unverified here; check parameters in the AlloyDB docs before enabling.
 INDEX_DDL = {
     VectorIndexKind.NONE: "",

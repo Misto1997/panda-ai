@@ -16,7 +16,7 @@ th { background:#f9fafb; position:sticky; top:0; font-weight:600; color:#374151;
 .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; } .chip { background:#f3f4f6; border-radius:6px; padding:3px 8px; font-size:11px; color:#4b5563; } .chip b { color:#111827; margin-right:3px; text-transform:uppercase; font-size:10px; letter-spacing:.04em; }
 .chip.good { background:#dcfce7; color:#166534; } .chip.warn { background:#fef3c7; color:#92400e; }
 .muted { color:var(--muted); font-size:12px; font-weight:400; }
-.rca h4 { margin:16px 0 6px; font-size:13px; } .warn-box { background:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:8px 10px; border-radius:8px; margin-top:8px; }
+.rca h4 { margin:16px 0 6px; font-size:13px; }
 .bar-row { display:grid; grid-template-columns: 220px 1fr 130px; gap:10px; align-items:center; margin:5px 0; font-size:13px; } .bar-track { background:#f3f4f6; border-radius:999px; height:10px; } .bar-fill { background:var(--bad); height:100%; border-radius:999px; } .bar-val { color:#4b5563; font-size:12px; }
 .hyp { margin:6px 0; } .badge { display:inline-block; padding:1px 8px; border-radius:999px; font-size:11px; font-weight:600; margin-right:6px; text-transform:uppercase; }
 .badge.confirmed { background:#fee2e2; color:#991b1b; } .badge.rejected { background:#e5e7eb; color:#4b5563; } .badge.inconclusive { background:#fef3c7; color:#92400e; }

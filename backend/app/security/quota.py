@@ -123,6 +123,6 @@ class QuotaService:
             used, total = self._store.consume(self._today(), self._subject(user), self._limit_for(user), self.global_limit)
         except LimitReached as e:
             msg = (f"You have used your {self.user_limit} questions for today (UTC). Come back tomorrow." if e.scope == "user"
-                   else "The demo reached its daily capacity. Please try again tomorrow.")
+                   else "The service reached its daily capacity. Please try again tomorrow.")
             raise QuotaExceededError(msg, details={"remaining": 0}) from e
         return max(0, min(self._limit_for(user) - used, self.global_limit - total))
