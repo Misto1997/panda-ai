@@ -20,6 +20,7 @@ import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import urlsplit
 
 try:
     import httpx
@@ -39,6 +40,12 @@ RCA = [("rca", "Why did Net GMV drop in the last 14 days?"), ("rca", "Why did vi
 MULTI_TURN = ["Net GMV by zone for the last 7 days", "and by marketplace?", "only Acme Express", "now as a daily trend",
               "Why did it drop in the last 14 days?", "what about visits?"]
 FRESH_SESSION_QS = ["Net GMV by zone for the last 7 days", "Daily visits by marketplace last 14 days", "Why did visits drop in the last 14 days?"]
+
+
+def base_url(url: str) -> str:
+    """Accept whatever was pasted (for example .../docs#/ or a trailing slash) and keep scheme and host only."""
+    parts = urlsplit(url if "://" in url else f"https://{url}")
+    return f"{parts.scheme}://{parts.netloc}"
 
 
 def headers(token: str) -> dict:
@@ -127,6 +134,8 @@ def main() -> int:
     ap.add_argument("--concurrency", type=int, default=4, help="parallel fresh sessions (0 = skip)")
     ap.add_argument("--out", help="write the full JSON report here")
     args = ap.parse_args()
+    args.api = base_url(args.api)
+    args.web = base_url(args.web) if args.web else None
 
     report: dict = {"api": args.api, "started": time.strftime("%Y-%m-%d %H:%M:%S"), "turns": []}
     print(f"== PANDA AI probe: {args.api}")
@@ -138,8 +147,11 @@ def main() -> int:
             r = httpx.get(args.api.rstrip("/") + path, headers=headers(args.token), timeout=120)
             print(f"GET {path:10s} {r.status_code} {time.perf_counter() - t:5.2f}s")
             if path == "/api/meta" and r.status_code == 200:
-                meta = r.json()
-                print(f"  profile={meta.get('profile')} llm={meta.get('llm')} engine={meta.get('engine')} search={meta.get('search')} data_through={meta.get('anchor')}")
+                try:
+                    meta = r.json()
+                    print(f"  profile={meta.get('profile')} llm={meta.get('llm')} engine={meta.get('engine')} search={meta.get('search')} data_through={meta.get('anchor')}")
+                except ValueError:
+                    print("  (response was not JSON: check that --api is the gateway URL)")
         except httpx.HTTPError as e:
             print(f"GET {path} failed: {e}")
     if args.web:
