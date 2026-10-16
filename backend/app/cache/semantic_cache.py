@@ -11,7 +11,7 @@ import threading
 from dataclasses import asdict, dataclass
 
 from app.core.config import Settings
-from app.core.enums import CacheLayer, QueryMode
+from app.core.enums import CacheLayer, QueryMode, StoreKind
 from app.core.logging import get_logger
 from app.cache.store import CacheStore, MemoryCacheStore
 from app.query.ir import QueryIR
@@ -32,7 +32,7 @@ class CacheStats:
 
 
 def create_cache_store(settings: Settings) -> CacheStore:
-    if settings.database_url:
+    if settings.cache_store == StoreKind.POSTGRES:
         from app.cache.postgres_store import PostgresCacheStore  # imported lazily: psycopg pool only when configured
         return PostgresCacheStore(settings.database_url, settings.cache_ttl_s)
     return MemoryCacheStore(settings.cache_ttl_s, settings.cache_max_entries)

@@ -67,7 +67,9 @@ Every HTTP request carries an `X-Request-Id` that appears on each log line. Expa
 
 ## Configuration
 
-Copy `.env.example` to `.env`.
+**Profiles:** `config/profiles/local.yaml` (offline defaults) and `prod.yaml` (full production suite, enforced at startup); pick with `PANDA_PROFILE`, override any key with an env var, inspect with `make config`. Local and production differ only by profile. Recipes (real Gemini, BigQuery, Postgres locally): **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**.
+
+Secrets and per-machine values go in `.env` (copy `.env.example`).
 
 | Variable | Meaning |
 |---|---|

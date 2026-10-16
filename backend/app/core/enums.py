@@ -229,3 +229,19 @@ class BootstrapStep(StrEnum):
 class CacheLayer(StrEnum):
     PLAN = "plan"      # normalised question -> generated SQL + intent
     RESULT = "result"  # canonical intent -> result set
+
+
+class AppEnv(StrEnum):
+    LOCAL = "local"
+    PROD = "prod"  # enforces the production suite at startup (see Settings validators)
+
+
+class SearchBackendKind(StrEnum):
+    MEMORY = "memory"      # BM25 + brute-force vectors in process
+    PGVECTOR = "pgvector"  # Postgres full-text + pgvector (AlloyDB or Cloud SQL)
+
+
+class StoreKind(StrEnum):
+    """Where conversation checkpoints, the semantic cache and usage quotas are kept."""
+    MEMORY = "memory"
+    POSTGRES = "postgres"

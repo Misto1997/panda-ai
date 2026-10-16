@@ -7,6 +7,7 @@ from fastapi import Request
 
 from app.core.config import Settings
 from app.core.db import PgPool
+from app.core.enums import StoreKind
 from app.security.auth import Authenticator, AuthUser
 from app.security.limits import IpRateLimiter, client_ip
 from app.security.quota import MemoryUsageStore, PgUsageStore, QuotaService
@@ -20,7 +21,7 @@ class Security:
 
 
 def build_security(settings: Settings, pool: PgPool | None) -> Security:
-    store = PgUsageStore(pool) if pool else MemoryUsageStore()
+    store = PgUsageStore(pool) if settings.quota_store == StoreKind.POSTGRES and pool else MemoryUsageStore()
     return Security(
         Authenticator.from_settings(settings),
         QuotaService(store, settings.daily_user_query_limit, settings.daily_global_query_limit),

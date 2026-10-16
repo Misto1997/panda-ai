@@ -1,0 +1,31 @@
+# Production profile (Cloud Run). app_env: prod makes startup FAIL unless the full production suite is selected:
+# real Gemini through Vertex, BigQuery, pgvector search, Postgres state, Firebase auth, no payload tracing.
+# Secrets and instance addresses are NOT here: DATABASE_URL and PGPASSWORD come from the deploy scripts / Secret Manager.
+app_env: prod
+
+llm_provider: gemini
+google_genai_use_vertexai: true
+google_cloud_project: ai-builder-hackathon
+google_cloud_location: global
+gemini_model: gemini-3.8-flash
+gemini_pro_model: gemini-3.8-flash
+
+engine: bigquery
+bq_dataset: panda
+bq_location: asia-southeast1
+
+search_backend: pgvector
+checkpointer: postgres
+cache_store: postgres
+quota_store: postgres
+
+auth_mode: firebase
+firebase_project_id: ai-builder-hackathon
+daily_user_query_limit: 30
+daily_global_query_limit: 300
+
+text_to_sql: true
+cache_enabled: true
+log_level: INFO
+trace_payloads: false
+cors_origins: []   # the browser talks to the web service (same origin); only the BFF calls the API

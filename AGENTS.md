@@ -53,9 +53,13 @@ make up / make ingest   # optional Postgres + pgvector, then index semantic/ (ne
 
 Backend scripts and tests need `PYTHONPATH=backend`; the Makefile sets it.
 
-## Configuration (`.env`, see `.env.example`)
+## Configuration
 
-`LLM_PROVIDER=mock|gemini` (mock needs no credentials; gemini needs `GOOGLE_API_KEY` or Vertex env vars; model names are unverified defaults). `ENGINE=duckdb`. `DATABASE_URL` empty = in-memory search, checkpointer and cache; set it for pgvector and the Postgres checkpointer. `LOG_LEVEL`, `TRACE_PAYLOADS`.
+Profiles in `config/profiles/*.yaml` (`PANDA_PROFILE`, default `local`; `prod` is enforced at startup by `Settings` validators). Precedence: env > `.env` > profile YAML > code defaults. `make config` prints the effective values. Component choices are explicit enums: `llm_provider`, `engine`, `search_backend`, `checkpointer`, `cache_store`, `quota_store`, `auth_mode`. Details and recipes: `docs/CONFIGURATION.md`. Secrets only in env/`.env`/Secret Manager, never YAML.
+
+### Legacy notes (`.env`, see `.env.example`)
+
+`LLM_PROVIDER=mock|gemini` (mock needs no credentials; gemini needs `GOOGLE_API_KEY` or Vertex env vars; model names are unverified defaults). `ENGINE=duckdb`. `DATABASE_URL` is only used by components whose kind is postgres/pgvector. `LOG_LEVEL`, `TRACE_PAYLOADS`.
 
 ## Conventions
 

@@ -233,3 +233,7 @@ frontend/.next/
 frontend/next-env.d.ts
 *.tsbuildinfo
 deploy/env.sh
+
+# Python template ignores "lib/" which swallowed frontend/lib; those are source files
+!frontend/lib/
+!frontend/lib/**

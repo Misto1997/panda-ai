@@ -28,7 +28,7 @@ class MetaController:
     def runtime(self) -> RuntimeInfo:
         c = self._c
         return RuntimeInfo(
-            llm=c.llm.name, engine=c.engine.name, search=c.search.backend_name, anchor=str(c.query_service.anchor),
+            profile=c.settings.profile, app_env=c.settings.app_env.value, llm=c.llm.name, engine=c.engine.name, search=c.search.backend_name, anchor=str(c.query_service.anchor),
             tables={t: c.engine.row_count(t) for t in RAW_TABLES},
             metrics=[MetricInfo(id=m.id, title=m.title, description=m.description) for m in c.catalog.metrics.values()],
             suggestions=SUGGESTIONS, cache=c.cache.stats())

@@ -1,0 +1,28 @@
+# Local profile: runs with no cloud access and no credentials. Edit values here, or override any key with an
+# environment variable of the same name (env wins), e.g.  LLM_PROVIDER=gemini make api
+# Run with a different file:  PANDA_PROFILE=<name> make api   (reads config/profiles/<name>.yaml)
+app_env: local
+
+# --- model -------------------------------------------------------------------------------------------
+llm_provider: mock                 # mock = offline rule-based stand-in | gemini = real model
+google_genai_use_vertexai: false   # gemini only: false = AI Studio key (GOOGLE_API_KEY in .env), true = Vertex with ADC
+# google_cloud_project: ai-builder-hackathon     # needed for Vertex and BigQuery
+# google_cloud_location: global
+
+# --- analytics engine --------------------------------------------------------------------------------
+engine: duckdb                     # duckdb = local file (make data) | bigquery = needs ADC: gcloud auth application-default login
+# bq_dataset: panda
+# bq_location: asia-southeast1
+
+# --- state: memory needs nothing; postgres/pgvector needs DATABASE_URL (see docs/CONFIGURATION.md) -------
+search_backend: memory             # memory | pgvector
+checkpointer: memory               # memory | postgres   (conversation memory)
+cache_store: memory                # memory | postgres   (semantic cache)
+quota_store: memory                # memory | postgres   (daily usage caps)
+
+# --- access and behaviour ----------------------------------------------------------------------------
+auth_mode: dev                     # dev = no login | firebase = verify Firebase ID tokens
+text_to_sql: true                  # false = skip SQL generation and use only the deterministic IR path
+cache_enabled: true
+log_level: INFO
+trace_payloads: false              # true adds SQL and model output to DEBUG logs

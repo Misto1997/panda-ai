@@ -1,5 +1,10 @@
 PY := backend/.venv/bin
-.PHONY: setup data test bench api api-debug ask web up ingest typecheck gcp-setup gcp-build gcp-deploy gcp-bootstrap gcp-budget gcp-smoke
+# Active profile = config/profiles/<name>.yaml, e.g.  make api PANDA_PROFILE=prod
+export PANDA_PROFILE ?= local
+.PHONY: config setup data test bench api api-debug ask web up ingest typecheck gcp-setup gcp-build gcp-deploy gcp-bootstrap gcp-budget gcp-smoke
+
+config:           ## show the effective configuration for the active profile (secrets redacted)
+	cd backend && PYTHONPATH=. ../$(PY)/python -m app.config_show
 
 setup:            ## install backend + frontend deps
 	python3.12 -m venv backend/.venv && $(PY)/pip install -e "backend[dev]"

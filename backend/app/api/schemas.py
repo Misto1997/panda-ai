@@ -8,6 +8,8 @@ class MetricInfo(BaseModel):
 
 
 class RuntimeInfo(BaseModel):
+    profile: str
+    app_env: str
     llm: str
     engine: str
     search: str

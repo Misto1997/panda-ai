@@ -118,7 +118,7 @@ export default function Home() {
         {meta && (
           <div className="status">
             <h3>Runtime</h3>
-            <div><b>LLM</b> {meta.llm}</div><div><b>Engine</b> {meta.engine}</div><div><b>Search</b> {meta.search}</div>
+            <div><b>Profile</b> {meta.profile} ({meta.app_env})</div><div><b>LLM</b> {meta.llm}</div><div><b>Engine</b> {meta.engine}</div><div><b>Search</b> {meta.search}</div>
             <div><b>Data through</b> {meta.anchor}</div>
             <div><b>Raw rows</b> {meta.tables.fact_sales.toLocaleString()}</div>
             <div><b>Rollup rows</b> {meta.tables.agg_sales_daily.toLocaleString()}</div>

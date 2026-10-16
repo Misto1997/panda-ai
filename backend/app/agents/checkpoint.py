@@ -4,14 +4,15 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import MemorySaver
 
 from app.core.config import Settings
+from app.core.enums import StoreKind
 from app.core.logging import get_logger
 
 log = get_logger("agent.checkpoint")
 
 
 def create_checkpointer(settings: Settings) -> tuple[BaseCheckpointSaver, callable]:
-    """Returns (saver, close). Postgres when DATABASE_URL is set (stateless, multi-instance safe), else in-memory."""
-    if not settings.database_url:
+    """Returns (saver, close). Postgres when settings.checkpointer is POSTGRES (stateless, multi-instance safe), else in-memory."""
+    if settings.checkpointer != StoreKind.POSTGRES:
         log.info("checkpointer: in-memory (conversations are lost on restart)")
         return MemorySaver(), lambda: None
     from langgraph.checkpoint.postgres import PostgresSaver

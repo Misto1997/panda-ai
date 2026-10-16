@@ -13,6 +13,7 @@ RUN python -c "import tomllib; print('\n'.join(tomllib.load(open('pyproject.toml
 
 COPY backend/app ./app
 COPY semantic /srv/semantic
+COPY config /srv/config
 
 RUN useradd --system --uid 10001 --no-create-home panda
 USER panda

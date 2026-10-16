@@ -1,5 +1,6 @@
 # Sourced: builds API_ENV (custom-delimiter env var string; '^##^' lets values contain commas and '@') shared by the API service and jobs.
-API_ENV="^##^LLM_PROVIDER=gemini"
+API_ENV="^##^PANDA_PROFILE=prod"
+API_ENV+="##LLM_PROVIDER=gemini"
 API_ENV+="##GOOGLE_GENAI_USE_VERTEXAI=true"
 API_ENV+="##GOOGLE_CLOUD_PROJECT=${PROJECT_ID}"
 API_ENV+="##GOOGLE_CLOUD_LOCATION=global"

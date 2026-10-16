@@ -56,7 +56,7 @@ def build_container(settings: Settings | None = None) -> Container:
     engine = create_engine(settings)
     cache = SemanticCache(settings)
     llm = create_llm(settings)
-    pool = PgPool.from_settings(settings) if settings.database_url else None  # lazy: no connection until first use
+    pool = PgPool.from_settings(settings) if settings.uses_postgres else None  # lazy: no connection until first use
     search = create_search(settings, catalog, create_embedder(settings), pool)
     service = QueryService(catalog, engine, cache, settings)
     deps = NodeDependencies(settings=settings, catalog=catalog, llm=llm, prompts=PROMPTS, search=search, query_service=service,
