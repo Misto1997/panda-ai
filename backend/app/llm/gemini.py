@@ -6,7 +6,7 @@ from app.core.config import Settings
 from app.core.enums import ModelTier
 from app.core.errors import LlmError, LlmUnavailableError
 from app.core.logging import get_logger
-from app.llm.base import LlmContext, Prompt, T
+from app.llm.base import AgentMsg, AgentTurn, LlmContext, Prompt, T, ToolCall, ToolSpec
 from app.llm.vertex import client_options
 
 log = get_logger("llm.gemini")
@@ -56,6 +56,26 @@ class GeminiLlm:
         if not text.strip():
             raise LlmError("model returned an empty response")
         return text
+
+    def agent_step(self, prompt: Prompt, tools: list[ToolSpec], transcript: list[AgentMsg], context: LlmContext | None = None) -> AgentTurn:
+        from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+
+        messages: list = [SystemMessage(prompt.system), HumanMessage(prompt.user)]
+        for m in transcript:
+            if m.role == "assistant":
+                messages.append(m.raw if m.raw is not None else AIMessage(content=m.text, tool_calls=[{"id": c.id, "name": c.name, "args": c.args} for c in m.calls]))
+            else:
+                messages.append(ToolMessage(content=m.text, tool_call_id=m.call_id, name=m.name))
+        started = time.perf_counter()
+        try:
+            reply = self._models[ModelTier.FAST].bind_tools([{"name": t.name, "description": t.description, "parameters": t.args.model_json_schema()} for t in tools]).invoke(messages)
+        except Exception as e:
+            raise self._failed(e, "agent step", started) from e
+        calls = tuple(ToolCall(id=str(c.get("id") or f"call-{i}"), name=c["name"], args=dict(c.get("args") or {})) for i, c in enumerate(reply.tool_calls or []))
+        content = reply.content
+        text = content if isinstance(content, str) else "".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in content)
+        log.info("llm agent step ok in %.1fs: %s", time.perf_counter() - started, [c.name for c in calls] or "text")
+        return AgentTurn(text=text.strip(), calls=calls, raw=reply)
 
     @staticmethod
     def _failed(error: Exception, what: str, started: float) -> LlmError:

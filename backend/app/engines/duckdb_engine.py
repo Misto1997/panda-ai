@@ -72,6 +72,12 @@ class DuckDBEngine:
             raise EngineError(f"table {table} is empty")
         return value
 
+    def date_range(self, table: str, column: str) -> tuple[date, date]:
+        lo, hi = self._con.execute(f"SELECT MIN({column}), MAX({column}) FROM {table}").fetchone()
+        if hi is None:
+            raise EngineError(f"table {table} is empty")
+        return lo, hi
+
     def row_count(self, table: str) -> int:
         return self._con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 

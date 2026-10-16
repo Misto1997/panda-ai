@@ -8,6 +8,7 @@ class Route(StrEnum):
     DISCOVER = "discover"
     HELP = "help"
     OFF_TOPIC = "off_topic"
+    META = "meta"   # about the previous answer or the data coverage: answered from saved facts, no query
 
 
 class NodeName(StrEnum):
@@ -19,6 +20,7 @@ class NodeName(StrEnum):
     RCA = "rca"
     DISCOVER = "discover"
     HELP = "help"
+    META = "meta"
 
 
 class ResponseType(StrEnum):
@@ -195,6 +197,7 @@ class CheckKind(StrEnum):
 
 class PromptId(StrEnum):
     ROUTE = "route"
+    JUDGE = "judge"
     PLAN = "plan"
     ANSWER = "answer"
     RCA_REQUEST = "rca_request"

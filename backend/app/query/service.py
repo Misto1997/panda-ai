@@ -59,13 +59,18 @@ class QueryService:
         self.logical_guard = LogicalGuard(self.schema, settings.max_rows, settings.sql_max_joins, settings.sql_max_chars)
         self.rewriter = LogicalRewriter(self.schema, self.sql_dialect)
         anchor_table = catalog.anchor_table()
-        self.resolver = LazyPeriodResolver(lambda: engine.max_date(anchor_table.rollup, anchor_table.time_column))
+        self.resolver = LazyPeriodResolver(lambda: engine.date_range(anchor_table.rollup, anchor_table.time_column))
         self.normalizer = SqlNormalizer(catalog, self.resolver)
         self.renderer = LogicalSqlRenderer(catalog, self.resolver)
 
     @property
     def anchor(self) -> date:
         return self.resolver.anchor
+
+    def data_range(self) -> tuple[date | None, date]:
+        """(earliest, latest) loaded date; both bounds follow the nightly refresh."""
+        last = self.resolver.anchor
+        return self.resolver.first, last
 
     # ---- text-to-sql path ----
     def prepare_sql(self, logical_sql: str, mode: QueryMode = QueryMode.AUTO) -> PreparedSql:

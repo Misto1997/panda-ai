@@ -94,6 +94,12 @@ class BigQueryEngine:
             raise EngineError(f"table {table} is empty")
         return value
 
+    def date_range(self, table: str, column: str) -> tuple[date, date]:
+        lo, hi = self._first_row(f"SELECT MIN({column}), MAX({column}) FROM {table}")
+        if hi is None:
+            raise EngineError(f"table {table} is empty")
+        return lo, hi
+
     def row_count(self, table: str) -> int:
         return int(self._scalar(f"SELECT COUNT(*) FROM {table}"))
 
@@ -102,6 +108,9 @@ class BigQueryEngine:
 
     def _scalar(self, sql: str):
         """First cell as a native Python value (run() would stringify dates)."""
+        return self._first_row(sql)[0]
+
+    def _first_row(self, sql: str):
         from google.api_core import exceptions as gexc
         from google.cloud import bigquery
 
@@ -111,4 +120,4 @@ class BigQueryEngine:
                                            location=self._location).result(timeout=30))
         except (gexc.GoogleAPICallError, gexc.RetryError, GoogleAuthError, concurrent.futures.TimeoutError) as e:
             raise EngineError(f"BigQuery metadata query failed: {e}") from e
-        return rows[0][0]
+        return rows[0]

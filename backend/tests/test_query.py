@@ -279,7 +279,7 @@ def test_service_starts_before_data_is_loaded(container):
 
     class EmptyEngine:
         name, dialect = "stub", "duckdb"
-        def max_date(self, table, column):
+        def date_range(self, table, column):
             raise EngineError("table not found")
 
     svc = QueryService(container.catalog, EmptyEngine(), container.cache, container.settings)  # must not raise
@@ -334,3 +334,10 @@ def test_hybrid_search_survives_one_half_failing(container):
         def vector(self, q, n): raise LlmError("embedding outage")
 
     assert [d.id for d in HybridSearch(container.catalog, VectorDown()).search("net gmv", 3)][0] == "net_gmv"
+
+
+def test_planner_refuses_a_period_outside_the_loaded_data(container):
+    sql = "SELECT zone, SUM(net_gmv) AS net_gmv FROM sales WHERE order_date >= DATE '2020-01-01' AND order_date < DATE '2020-01-08' GROUP BY 1"
+    out = run_planner(container, ScriptedLlm(sql), question="Net GMV by zone between 2020-01-01 and 2020-01-07")
+    r = out["response"]
+    assert r["type"] == "info" and "my data covers" in r["text"] and "2020-01-01 to 2020-01-07" in r["text"] and r["meta"]["suggestions"]

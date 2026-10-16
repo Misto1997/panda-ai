@@ -2,10 +2,11 @@
 It only understands the vocabulary passed in LlmContext, exactly like the real planner."""
 from __future__ import annotations
 
+import json
 import re
 
 from app.core.enums import Confidence, LlmTask, ModelTier, Route
-from app.llm.base import LlmContext, Prompt, T, Term
+from app.llm.base import AgentMsg, AgentTurn, LlmContext, Prompt, T, Term, ToolCall, ToolSpec
 from app.presentation.narrative import answer_summary, rca_summary
 
 RCA_WORDS = re.compile(r"\b(why|root cause|reason|investigate|rca|what happened|what caused)\b|\b(drop|dropped|decline|declined|fell|fall|dip|dipped|decrease|decreased|rise|rose|spike|spiked|increase|increased)\b")
@@ -38,6 +39,20 @@ class MockLlm:
         if builder is None:
             raise NotImplementedError(schema.__name__)
         return schema(**builder(q, ctx))
+
+    def agent_step(self, prompt: Prompt, tools: list[ToolSpec], transcript: list[AgentMsg], context: LlmContext | None = None) -> AgentTurn:
+        """Offline judge: checks the semantic layer when asked about available data, then routes with the keyword rules."""
+        ctx = context or LlmContext()
+        q = ctx.question.lower()
+        results = [json.loads(m.text) for m in transcript if m.role == "tool"]
+        if not results and any(t.name == "search_semantic_layer" for t in tools) and re.search(r"\b(do you have|have data|data on|available for)\b", q):
+            return AgentTurn("", (ToolCall("mock-1", "search_semantic_layer", {"query": q}),))
+        matches = results[-1].get("matches") if results else None
+        if matches is not None and not any(re.sub(r"[^a-z0-9 ]", " ", m["title"].lower()).strip() in q for m in matches):  # nothing it found is what was asked for
+            return AgentTurn("", (ToolCall("mock-2", "decide", {"route": "deny", "reply": "I don't have that in my semantic layer."}),))
+        route = self._route(q, ctx)["route"]
+        decision = {Route.HELP: "deny"}.get(route, route.value)
+        return AgentTurn("", (ToolCall("mock-2", "decide", {"route": decision, "reason": "keyword judge (mock)"}),))
 
     # ---- structured behaviours ----
     @staticmethod

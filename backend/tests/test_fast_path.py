@@ -215,3 +215,59 @@ def test_off_topic_and_help_replies_are_static_with_suggestions(container):
     assert out["type"] == "info" and "outside what I can help with" in out["text"] and len(out["meta"]["suggestions"]) == 4
     out = [u.response for u in container.runner.stream("who are you?", "t-off-2", {}) if u.response][-1]
     assert "PANDA AI" in out["text"] and out["meta"]["suggestions"]
+
+
+def _ask(container, question, thread):
+    updates = list(container.runner.stream(question, thread, {}))
+    return [u.response for u in updates if u.response][-1], [s["node"] for u in updates for s in (u.steps or [])]
+
+
+def test_follow_ups_about_the_answer_and_the_data_need_no_query(container):
+    container.cache.clear()
+    first, _ = _ask(container, "net gmv by zone last 7 days", "t-meta")
+    sql, nodes = _ask(container, "show me the sql", "t-meta")
+    assert sql["type"] == "info" and sql["sql"] and "net gmv by zone" in sql["text"].lower() and "plan" not in nodes and "execute" not in nodes
+    how, _ = _ask(container, "which filters did you apply?", "t-meta")
+    assert how["sql"] and first["meta"]["period"] in how["text"]
+    rng, nodes = _ask(container, "till how long do you have data?", "t-meta")
+    assert "I have data from" in rng["text"] and rng["meta"]["suggestions"] and "execute" not in nodes
+    fresh, _ = _ask(container, "show me the sql", "t-meta-new")
+    assert fresh.get("sql") is None and "haven't run a query" in fresh["text"]
+
+
+def test_judge_checks_the_semantic_layer_before_denying(container):
+    out, _ = _ask(container, "do you have data on customer returns?", "t-judge-1")
+    assert out["type"] == "info" and "I don't have that in my semantic layer" in out["text"] and out["meta"]["suggestions"]
+    updates = list(container.runner.stream("do you have data on customer returns?", "t-judge-2", {}))
+    assert any("judge, checked search_semantic_layer" in s["detail"] for u in updates for s in (u.steps or []))
+
+
+@pytest.mark.parametrize("q, kind", [
+    ("show me the sql", "sql"), ("what was the sql you used", "sql"), ("till how long you have data", "range"), ("how far back does the data go", "range"),
+    ("data available till when", "range"), ("which filters did you apply", "how"), ("how did you calculate that", "how"),
+    ("what is net gmv for the last day", None), ("net gmv yesterday", None), ("show me the sql for net gmv by zone", "sql"),
+])
+def test_meta_kind(q, kind):
+    from app.agents.routing import meta_kind
+    assert meta_kind(q) == kind
+
+
+def test_meta_rules_do_not_swallow_data_questions(router):
+    assert router.route("show me the sql for net gmv by zone") == Route.QNA   # names a metric: a new question, not a follow-up
+    assert router.route("show me the sql") == Route.META and router.route("till how long you have data") == Route.META
+
+
+def test_unusable_judge_output_falls_back_to_the_planner(container, monkeypatch):
+    from app.core.errors import LlmError, LlmUnavailableError
+
+    def broken(*a, **k):
+        raise LlmError("garbled")
+    monkeypatch.setattr(container.llm, "agent_step", broken)
+    out, nodes = _ask(container, "tell me something interesting", "t-judge-bad")
+    assert "plan" in nodes and out["type"] in ("info", "error")  # reached the planner instead of failing the turn
+
+    def down(*a, **k):
+        raise LlmUnavailableError("busy")
+    monkeypatch.setattr(container.llm, "agent_step", down)
+    out, _ = _ask(container, "tell me something interesting", "t-judge-down")
+    assert out["type"] == "error" and "busy" in out["text"]

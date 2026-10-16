@@ -33,7 +33,9 @@ class RcaNode(AgentNode):
             meta=ResultMeta(route="rca", engine=self.deps.query_service.engine.name, llm=self.deps.llm.name, tree=report.tree,
                             queries=report.queries_run, elapsed_ms=round((time.perf_counter() - started) * 1000, 1), docs=[d.id for d in docs]))
         last_ir = {"metrics": [metric.id], "dimensions": [], "filters": [], "time_expr": time_expr, "grain": "none"}
-        return NodeOutput({"response": result.to_state(), "last_ir": last_ir, "last_sql": None},  # an RCA turn invalidates the previous SQL
+        last_facts = {"question": question, "kind": "rca", "sql": "\n\n".join(report.sql_sample) or None, "period": f"{report.current.start} to {report.current.end}",
+                      "rows": None, "engine": self.deps.query_service.engine.name}
+        return NodeOutput({"response": result.to_state(), "last_ir": last_ir, "last_sql": None, "last_facts": last_facts},  # an RCA turn invalidates the previous SQL
                           [self.step(f"runbook={report.tree} {report.queries_run} governed queries", started)])
 
     def _request(self, state: TurnState, docs) -> tuple:

@@ -23,7 +23,8 @@ class HelpNode(AgentNode):
 
     def run(self, state: TurnState) -> NodeOutput:
         off_topic = state.get("route") == Route.OFF_TOPIC.value
-        text = f"{REFUSAL}\n\n{PICK}" if off_topic else f"{INTRO}\n\n{PICK}"
+        reply = (state.get("reply") or "").strip()  # a denial the judge wrote after checking the facts; otherwise the fixed text
+        text = f"{reply or REFUSAL}\n\n{PICK}" if off_topic else f"{INTRO}\n\n{PICK}"
         label = Route.OFF_TOPIC.value if off_topic else "help"
         meta = ResultMeta(route=label, suggestions=list(HELP_SUGGESTIONS))
         return NodeOutput({"response": ChatResult(type=ResponseType.INFO, text=text, meta=meta).to_state()}, [self.step(label)])

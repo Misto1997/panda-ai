@@ -72,6 +72,8 @@ class SqlPlannerNode(AgentNode):
             info = ChatResult(type=ResponseType.INFO, text=DECLINED, meta=ResultMeta(route=Route.QNA.value, suggestions=list(HELP_SUGGESTIONS)))
             return NodeOutput({"response": info.to_state(), "docs": doc_ids}, [*steps, self.step("declined: outside the available metrics", started, name="plan")])
 
+        if generated and (blocked := self._outside_data(generated.prepared.intent.period, started)):
+            return NodeOutput({**blocked.update, "docs": doc_ids}, [*steps, *blocked.steps])
         if generated:
             intent = generated.prepared.intent
             ir = intent.ir.model_dump(mode="json") if intent.ir else None
@@ -92,6 +94,23 @@ class SqlPlannerNode(AgentNode):
             self.deps.cache.put_plan(key, {"sql": None, "ir": update["ir"], "docs": doc_ids})
         steps.append(self.step(f"ir fallback: metrics={ir.metrics} dims={ir.dimensions} time={ir.time_expr}", started, name="plan"))
         return NodeOutput(update, steps)
+
+    def _outside_data(self, period, started: float) -> NodeOutput | None:
+        """A period entirely before or after the loaded data cannot be answered: say so firmly, with the real range, instead of returning nothing."""
+        if period is None or period.start == ALL_TIME_START:
+            return None
+        try:
+            first, last = self._svc.data_range()
+        except PandaError:
+            return None  # warehouse not reachable: the engine will report that itself
+        if (first is None or period.end > first) and period.start <= last:
+            return None
+        span = f"{first} to {last}" if first else f"up to {last}"
+        text = (f"I can't answer for {period.start} to {period.last_day}: my data covers {span}. "
+                f"Ask about a period inside that range, for example:")
+        info = ChatResult(type=ResponseType.INFO, text=text, meta=ResultMeta(route=Route.QNA.value, period=f"{period.start} to {period.last_day}",
+                                                                           suggestions=list(HELP_SUGGESTIONS)))
+        return NodeOutput({"response": info.to_state()}, [self.step(f"declined: period outside loaded data ({span})", started, name="plan")])
 
     def _anchor(self) -> str:
         try:
@@ -120,9 +139,11 @@ class SqlPlannerNode(AgentNode):
     def _from_cache(self, hit: dict, mode: QueryMode, started: float) -> NodeOutput | None:
         if hit.get("sql"):
             try:  # the semantic layer or guard may have changed since the entry was written
-                self._svc.prepare_sql(hit["sql"], mode)
+                prepared = self._svc.prepare_sql(hit["sql"], mode)
             except GuardViolationError:
                 return None
+            if blocked := self._outside_data(prepared.intent.period, started):
+                return blocked
         update = {"sql": hit.get("sql"), "ir": hit.get("ir"), "docs": hit.get("docs", []), "ir_source": IrSource.CACHE.value,
                   "path": QueryPath.CACHE.value, "sql_attempts": 0, "rationale": hit.get("rationale"), "confidence": hit.get("confidence")}
         return NodeOutput(update, [self.step("plan from semantic cache (LLM skipped)", started, name="plan", cache=CacheStatus.HIT)])

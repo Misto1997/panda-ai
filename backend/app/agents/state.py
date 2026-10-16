@@ -26,8 +26,10 @@ class TurnState(TypedDict, total=False):
     response: dict | None     # ChatResult.to_state()
     last_ir: dict | None      # survives across turns (follow-ups); derived from the generated SQL
     last_sql: str | None      # survives across turns: the previous logical SQL
+    last_facts: dict | None   # survives across turns: summary of the previous answer (question, period, sources, SQL) for "show me the SQL" style follow-ups
+    reply: str | None         # a ready-made user-facing message chosen by the judge (denials)
     trace: Annotated[list[dict], lambda _old, new: new]  # steps of the node that just ran (replaced, not accumulated)
 
 
 TURN_RESET: dict = {"ir": None, "ir_source": None, "docs": [], "sql": None, "path": None, "sql_attempts": None, "rationale": None,
-                    "confidence": None, "bytes_processed": None, "query": None, "response": None}
+                    "confidence": None, "bytes_processed": None, "query": None, "response": None, "reply": None}

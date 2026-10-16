@@ -113,9 +113,11 @@ class LazyPeriodResolver(PeriodResolver):
     """Looks the anchor date up on first use (so the service can start, and report not-ready, before any data is loaded) and re-reads it every
     `ttl_s` seconds: the nightly refresh moves the data window while instances keep running. A failed re-read keeps the last known anchor."""
 
-    def __init__(self, load_anchor: Callable[[], date], ttl_s: float = 60.0, clock: Callable[[], float] = time.monotonic) -> None:
+    def __init__(self, load_anchor: Callable[[], "date | tuple[date, date]"], ttl_s: float = 60.0, clock: Callable[[], float] = time.monotonic) -> None:
+        """`load_anchor` returns the latest date, or (earliest, latest)."""
         self._load, self._ttl, self._clock = load_anchor, ttl_s, clock
         self._anchor: date | None = None
+        self._first: date | None = None
         self._read_at = 0.0
         self._lock = threading.Lock()
 
@@ -133,9 +135,16 @@ class LazyPeriodResolver(PeriodResolver):
             if known is None:
                 raise
             return known
+        first, last = loaded if isinstance(loaded, tuple) else (None, loaded)
         with self._lock:
-            self._anchor, self._read_at = loaded, self._clock()
-        return loaded
+            self._anchor, self._first, self._read_at = last, first, self._clock()
+        return last
+
+    @property
+    def first(self) -> date | None:
+        """Earliest loaded date, or None when the loader does not report it."""
+        self.anchor  # refreshes both bounds
+        return self._first
 
     @property
     def today(self) -> date:

@@ -4,7 +4,7 @@ import type { Turn } from "@/lib/types";
 
 export const STAGE_LABEL: Record<string, string> = {
   route: "Understanding your question", plan: "Writing SQL", execute: "Running on BigQuery", respond: "Preparing the answer",
-  rca: "Investigating the root cause", narrate: "Writing insights", discover: "Looking up definitions", help: "Preparing help",
+  rca: "Investigating the root cause", narrate: "Writing insights", discover: "Looking up definitions", help: "Preparing help", meta: "Checking the previous answer",
 };
 export const stageLabel = (node: string) => STAGE_LABEL[node] ?? "Working";
 

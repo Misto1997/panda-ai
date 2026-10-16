@@ -32,7 +32,9 @@ class ResponderNode(AgentNode):
                             elapsed_ms=query["elapsed_ms"], cache=CacheStatus(query["cache"]), ir_source=state.get("ir_source"),
                             period=query["period"], rows=len(query["rows"]), docs=state.get("docs", []), path=state.get("path"),
                             sql_attempts=state.get("sql_attempts"), bytes_processed=query.get("bytes_processed") or state.get("bytes_processed")))
-        update = {"response": result.to_state(), "last_ir": state.get("ir"), "last_sql": state.get("sql")}
+        facts = {"question": state["question"], "kind": "qna", "sql": state.get("sql"), "physical_sql": query["sql"], "period": query["period"],
+                 "sources": query["sources"], "rows": len(query["rows"]), "engine": self.deps.query_service.engine.name, "path": state.get("path")}
+        update = {"response": result.to_state(), "last_ir": state.get("ir"), "last_sql": state.get("sql"), "last_facts": facts}
         return NodeOutput(update, [self.step("answer + chart", started, name="respond")])
 
     def _describe_columns(self, query: dict) -> tuple[dict[str, str], dict[str, str]]:

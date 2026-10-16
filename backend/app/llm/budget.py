@@ -8,7 +8,7 @@ from contextvars import ContextVar
 
 from app.core.enums import ModelTier
 from app.core.errors import LlmBudgetExceededError
-from app.llm.base import LlmClient, LlmContext, Prompt, T
+from app.llm.base import AgentMsg, AgentTurn, LlmClient, LlmContext, Prompt, T, ToolSpec
 
 
 class TurnLlmBudget:
@@ -53,3 +53,8 @@ class BudgetedLlm:
         self._charge()
         with self._slot():
             return self._inner.text(prompt, tier, context)
+
+    def agent_step(self, prompt: Prompt, tools: list[ToolSpec], transcript: list[AgentMsg], context: LlmContext | None = None) -> AgentTurn:
+        self._charge()
+        with self._slot():
+            return self._inner.agent_step(prompt, tools, transcript, context)
