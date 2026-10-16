@@ -3,8 +3,8 @@ PY := backend/.venv/bin
 export PANDA_PROFILE ?= local
 .PHONY: probe doctor gcp-diagnose config setup data test bench api api-debug ask web up ingest typecheck gcp-setup gcp-build gcp-deploy gcp-bootstrap gcp-budget gcp-smoke
 
-probe:            ## latency/UX probe of a running instance: make probe API=https://panda-api-....run.app WEB=https://panda-web-....run.app ID_TOKEN=eyJ...
-	cd backend && .venv/bin/python scripts/probe.py --api $(or $(API),http://localhost:8000) $(if $(WEB),--web $(WEB),) $(ARGS)
+probe:            ## latency/UX probe of a running instance (needs only `pip3 install httpx`): make probe API=https://panda-api-....run.app WEB=https://panda-web-....run.app ID_TOKEN=eyJ...
+	$(or $(wildcard backend/.venv/bin/python),python3) backend/scripts/probe.py --api $(or $(API),http://localhost:8000) $(if $(WEB),--web $(WEB),) $(ARGS)
 
 doctor:           ## check every dependency of the active profile (warehouse, database, index, model); LLM=1 makes one real model call
 	cd backend && PYTHONPATH=. ../$(PY)/python -m app.bootstrap diagnose $(if $(LLM),--llm,)

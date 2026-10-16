@@ -15,7 +15,21 @@ deploy_job() {  # name, python args
     --command python --args="$1" \
     --set-env-vars "${API_ENV}" \
     --set-secrets "PGPASSWORD=${DB_PASSWORD_SECRET}:latest"
-  gcloud run jobs execute "${name}" --project "${PROJECT_ID}" --region "${REGION}" --wait
+  local status=0
+  gcloud run jobs execute "${name}" --project "${PROJECT_ID}" --region "${REGION}" --wait || status=$?
+  show_logs "${name}"
+  return "${status}"
+}
+
+show_logs() {  # print what the latest execution of the job wrote (Cloud Run Jobs only log to Cloud Logging)
+  local name="$1" exec
+  exec="$(gcloud run jobs executions list --job "${name}" --project "${PROJECT_ID}" --region "${REGION}" --limit 1 --format='value(name)' 2>/dev/null || true)"
+  [[ -n "${exec}" ]] || { echo "(could not find the execution; see Cloud Run > Jobs > ${name} > Logs)"; return 0; }
+  echo "---- logs of ${exec} ----"
+  sleep 8  # log ingestion lag
+  gcloud logging read "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"${name}\" AND labels.\"run.googleapis.com/execution_name\"=\"${exec}\"" \
+    --project "${PROJECT_ID}" --order asc --limit 200 --freshness 1h --format='value(textPayload)' | grep -v '^$' || true
+  echo "---- end of logs (full history: Cloud Run > Jobs > ${name} > Logs) ----"
 }
 
 case "${STEP}" in

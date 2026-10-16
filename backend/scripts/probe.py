@@ -21,7 +21,10 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
-import httpx
+try:
+    import httpx
+except ImportError:
+    sys.exit("this script needs httpx: pip3 install httpx")
 
 GAP_S = 2.0  # a silent stretch longer than this is 'dead time' on the UI
 
