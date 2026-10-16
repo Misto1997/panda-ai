@@ -86,7 +86,7 @@ Profiles in `config/profiles/*.yaml` (`PANDA_PROFILE`, default `local`; `prod` i
 
 ## Status
 
-Offline (mock LLM, DuckDB): fully tested. Deployed on Google Cloud: Cloud Run (web, api, jobs), AlloyDB, BigQuery, Vertex Gemini, Firebase Auth. Real-model answer quality is not graded by the offline benchmark: run `LLM_PROVIDER=gemini make bench` or `make gcp-bootstrap STEP=accuracy`. Accuracy = execution accuracy: result set equals ground-truth SQL on the physical tables (`backend/tests/golden/golden.yaml`). Not load tested. gcloud flags marked unverified in `deploy/` and `docs/GCP_SETUP.md` should be checked against current gcloud docs.
+Offline (mock LLM, DuckDB): fully tested. Deployed on Google Cloud: Cloud Run (web, api, jobs), AlloyDB, BigQuery, Vertex Gemini, Firebase Auth. Real-model answer quality is not graded by the offline benchmark: run `LLM_PROVIDER=gemini make bench` or `make gcp-bootstrap STEP=accuracy`. Accuracy = execution accuracy: result set equals ground-truth SQL on the physical tables (`backend/app/golden/golden.yaml`). Not load tested. gcloud flags marked unverified in `deploy/` and `docs/GCP_SETUP.md` should be checked against current gcloud docs.
 
 ## Dev environment notes
 

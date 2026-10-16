@@ -122,7 +122,7 @@ Primary top-line metric. Net GMV = Visits x Conversion x Gross AOV x Net-to-Gros
 | Answer cannot be checked | Every answer shows its SQL, period, source tables and bytes scanned |
 | Question is not answerable | The judge checks the knowledge files and data range, then refuses instead of guessing |
 
-**How accuracy is measured.** A golden benchmark of 43 questions (values, breakdowns, trends, top-N, ratios, period-over-period, multi-table, follow-ups) lives in `backend/tests/golden/golden.yaml`. Each question runs through the full graph, and the returned result set is compared (order and column names ignored, numeric tolerance) with independently written ground-truth SQL on the physical tables. This is *execution accuracy*, the standard text-to-SQL measure: it checks the answer, not the SQL text.
+**How accuracy is measured.** A golden benchmark of 43 questions (values, breakdowns, trends, top-N, ratios, period-over-period, multi-table, follow-ups) lives in `backend/app/golden/golden.yaml`. Each question runs through the full graph, and the returned result set is compared (order and column names ignored, numeric tolerance) with independently written ground-truth SQL on the physical tables. This is *execution accuracy*, the standard text-to-SQL measure: it checks the answer, not the SQL text.
 
 ```bash
 make bench                                  # offline: validates the harness with the mock model
