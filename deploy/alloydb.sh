@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stop / start the AlloyDB instance to save cost when not demoing:  deploy/alloydb.sh stop|start|status
+# Stop / start the AlloyDB instance to save cost when idle:  deploy/alloydb.sh stop|start|status
 # UNVERIFIED: --activation-policy=NEVER|ALWAYS is documented for `gcloud alloydb instances update`; confirm the current behaviour
 # (stopped instances still bill for storage; startup takes minutes) at https://cloud.google.com/alloydb/docs/instance-stop-start
 source "$(dirname "$0")/lib.sh"

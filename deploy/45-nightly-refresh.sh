@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Nightly roll-forward of the demo dataset so "yesterday" is really yesterday. A Cloud Scheduler job triggers a Cloud Run Job that regenerates
+# Nightly roll-forward of the synthetic dataset so "yesterday" is really yesterday. A Cloud Scheduler job triggers a Cloud Run Job that regenerates
 # the synthetic data to end yesterday (UTC), reloads BigQuery and clears the cache. It stops by itself after N days and can be paused/deleted any time.
 #
 #   deploy/45-nightly-refresh.sh create [DAYS]   create/update the job and the schedule (default 30 days; the job no-ops after that)

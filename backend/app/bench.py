@@ -10,11 +10,13 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import statistics
 import sys
 import time
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
+from datetime import date, timedelta
 from pathlib import Path
 
 import yaml
@@ -76,6 +78,22 @@ def load_items(path: Path = GOLDEN) -> dict:
     return yaml.safe_load(path.read_text())
 
 
+ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+CALENDAR = re.compile(r"\b(week|month|mtd|quarter|year)\b", re.I)  # calendar-aligned periods do not survive a shift by N days
+
+
+def _shift(text: str, days: int) -> str:
+    return ISO_DATE.sub(lambda m: str(date.fromisoformat(m.group()) + timedelta(days=days)), text)
+
+
+def rebase(item: dict, days: int) -> dict | None:
+    """Moves a golden item to a data window that ends `days` later (the nightly roll-forward). Items whose period is calendar-aligned
+    (last week, this month...) cannot be shifted faithfully and return None."""
+    if any(CALENDAR.search(t) for t in item["turns"]):
+        return None
+    return {**item, "turns": [_shift(t, days) for t in item["turns"]], "sql": _shift(item["sql"], days)}
+
+
 def run_item(container: Container, item: dict, use_cache: bool) -> Outcome:
     thread, final, latency = f"bench-{item['id']}", None, 0.0
     for question in item["turns"]:
@@ -92,11 +110,17 @@ def run_item(container: Container, item: dict, use_cache: bool) -> Outcome:
     return Outcome(item["id"], item["category"], ok, path, latency, detail, reason)
 
 
-def run_bench(container: Container, categories: set[str] | None = None, use_cache: bool = False, path: Path = GOLDEN) -> list[Outcome]:
+def run_bench(container: Container, categories: set[str] | None = None, use_cache: bool = False, path: Path = GOLDEN,
+              follow_anchor: bool = False) -> list[Outcome]:
+    """`follow_anchor` is for a deployment whose data rolls forward: golden dates are shifted to the live data window and calendar-aligned items are skipped."""
     golden = load_items(path)
-    if str(container.query_service.anchor) != golden["anchor"]:
-        raise SystemExit(f"dataset anchor {container.query_service.anchor} != golden anchor {golden['anchor']}: regenerate data with `make data`")
-    return [run_item(container, i, use_cache) for i in golden["items"] if not categories or i["category"] in categories]
+    delta = (container.query_service.anchor - date.fromisoformat(golden["anchor"])).days
+    if delta and not follow_anchor:
+        raise SystemExit(f"dataset anchor {container.query_service.anchor} != golden anchor {golden['anchor']}: regenerate data with `make data` (or pass --follow-anchor)")
+    items = [i for i in golden["items"] if not categories or i["category"] in categories]
+    if follow_anchor:
+        items = [r for r in (rebase(i, delta) for i in items) if r]
+    return [run_item(container, i, use_cache) for i in items]
 
 
 def summarize(outcomes: list[Outcome]) -> dict:
@@ -135,12 +159,13 @@ def main() -> None:
     ap.add_argument("--file", type=Path, default=GOLDEN)
     ap.add_argument("--category", action="append", help="only this category (repeatable)")
     ap.add_argument("--cache", action="store_true", help="allow the semantic cache (default: bypass, so latency is real)")
+    ap.add_argument("--follow-anchor", action="store_true", help="shift golden dates to the live data window (data that rolls forward nightly); skips calendar-aligned items")
     ap.add_argument("--json", type=Path, help="write outcomes and summary as JSON")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
     container = build_container(get_settings().model_copy(update={"log_level": "WARNING"}))
     try:
-        outcomes = run_bench(container, set(args.category or []), args.cache, args.file)
+        outcomes = run_bench(container, set(args.category or []), args.cache, args.file, args.follow_anchor)
         summary = summarize(outcomes)
         print(f"llm={container.llm.name} engine={container.engine.name} anchor={container.query_service.anchor}")
         print(render(outcomes, summary, args.verbose))

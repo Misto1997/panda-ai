@@ -28,7 +28,7 @@ type Props = {
 };
 
 export default function Sidebar(p: Props) {
-  const [demoOpen, setDemoOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const cls = `sidebar${p.collapsed ? " collapsed" : ""}${p.mobileOpen ? " open" : ""}`;
   const c = p.meta?.cache;
   const hits = c ? (c.plan_hits ?? 0) + (c.result_hits ?? 0) : 0;
@@ -59,10 +59,10 @@ export default function Sidebar(p: Props) {
         </div>
 
         <div className="side-foot">
-          <div className="demo">
-            <button className="foot-btn" onClick={() => setDemoOpen((v) => !v)} aria-expanded={demoOpen} aria-label="Demo controls" title="Demo controls"><SlidersIcon /><span className="label">Demo</span></button>
-            {demoOpen && (
-              <div className="popover" role="group" aria-label="Demo controls">
+          <div>
+            <button className="foot-btn" onClick={() => setOptionsOpen((v) => !v)} aria-expanded={optionsOpen} aria-label="Display options" title="Display options"><SlidersIcon /><span className="label">Options</span></button>
+            {optionsOpen && (
+              <div className="popover" role="group" aria-label="Display options">
                 <label title="Query the raw fact table instead of the pre-aggregated daily rollup, to compare query time">
                   <input type="checkbox" checked={p.forceRaw} onChange={(e) => p.setForceRaw(e.target.checked)} /> Force raw table scan <span className="muted">(skip rollup)</span></label>
                 <label title="Ignore cached intents and results for this question, to compare latency with and without the cache">

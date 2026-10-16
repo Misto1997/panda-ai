@@ -244,6 +244,7 @@ class BootstrapStep(StrEnum):
     DIAGNOSE = "diagnose"
     REFRESH = "refresh"
     PRUNE = "prune"
+    ACCURACY = "accuracy"
 
 
 class CacheLayer(StrEnum):

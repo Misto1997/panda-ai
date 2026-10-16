@@ -47,7 +47,7 @@ def run_index(s: Settings) -> None:
 
 
 def run_warm(s: Settings) -> int:
-    """Replays the demo questions through the graph so shared caches are pre-filled. Returns the number of failures."""
+    """Replays the example questions through the graph so shared caches are pre-filled. Returns the number of failures."""
     import uuid
 
     from app.api.controllers.meta import SUGGESTIONS
@@ -103,6 +103,23 @@ def run_refresh(s: Settings, rows: int, days: int, until: str | None) -> int:
     return 0
 
 
+def run_accuracy(s: Settings) -> int:
+    """End-to-end accuracy on the configured stack (real model, real warehouse): the golden questions through the full graph, each result set compared with
+    independently written ground-truth SQL. Dates follow the live data window; the cache is bypassed so latency is real."""
+    from app.bench import render, run_bench, summarize
+    from app.container import build_container
+
+    container = build_container(s.model_copy(update={"log_level": "WARNING"}))
+    try:
+        outcomes = run_bench(container, follow_anchor=True)
+        summary = summarize(outcomes)
+        print(f"llm={container.llm.name} engine={container.engine.name} anchor={container.query_service.anchor} items={len(outcomes)}")
+        print(render(outcomes, summary, verbose=True))
+    finally:
+        container.close()
+    return 1 if summary["unexpected_failures"] else 0
+
+
 def run_diagnose(s: Settings, ping_llm: bool) -> int:
     """Prints every dependency check. Exit code 1 if any fails. Runs inside the VPC when executed as a Cloud Run Job."""
     from app.container import build_container
@@ -132,13 +149,14 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--skip-load", action="store_true", help="only write Parquet files (see --parquet-dir)")
     d.add_argument("--parquet-dir")
     sub.add_parser(BootstrapStep.INDEX, help="build the semantic index in Postgres/AlloyDB")
-    sub.add_parser(BootstrapStep.WARM, help="replay demo questions to pre-fill the cache")
+    sub.add_parser(BootstrapStep.WARM, help="replay example questions to pre-fill the cache")
     rf = sub.add_parser(BootstrapStep.REFRESH, help="roll the dataset forward to end yesterday, reload BigQuery, clear the cache")
     rf.add_argument("--rows", type=int, default=20_000_000)
     rf.add_argument("--days", type=int, default=120)
     rf.add_argument("--until", default=os.environ.get("REFRESH_UNTIL"), help="ISO date after which the job does nothing")
     pr = sub.add_parser(BootstrapStep.PRUNE, help="delete conversation state idle for more than --days and expired cache rows")
     pr.add_argument("--days", type=int, default=7)
+    sub.add_parser(BootstrapStep.ACCURACY, help="golden-question accuracy on the configured stack (real model and warehouse)")
     dg = sub.add_parser(BootstrapStep.DIAGNOSE, help="check config, warehouse, database, index (add --llm for one real model call)")
     dg.add_argument("--llm", action="store_true")
     args = ap.parse_args(argv)
@@ -153,6 +171,8 @@ def main(argv: list[str] | None = None) -> int:
             print(prune(s, args.days))
         elif args.step == BootstrapStep.REFRESH:
             return run_refresh(s, args.rows, args.days, args.until)
+        elif args.step == BootstrapStep.ACCURACY:
+            return run_accuracy(s)
         elif args.step == BootstrapStep.DIAGNOSE:
             return run_diagnose(s, args.llm)
         else:

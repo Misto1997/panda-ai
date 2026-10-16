@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cloud Run Jobs that run the one-off bootstrap steps with the API image. Usage: 40-bootstrap-job.sh [data|index|warm|all]  (default: all)
+# Cloud Run Jobs that run the one-off bootstrap steps with the API image. Usage: 40-bootstrap-job.sh [data|index|warm|accuracy|all]  (default: all; accuracy is never part of all)
 source "$(dirname "$0")/lib.sh"
 require_set DB_HOST
 source "${DEPLOY_DIR}/api_env.sh"
@@ -37,6 +37,7 @@ case "${STEP}" in
   index) deploy_job index "-m,app.bootstrap,index" ;;
   warm)  deploy_job warm  "-m,app.bootstrap,warm" ;;
   diagnose) deploy_job diagnose "-m,app.bootstrap,diagnose,--llm" ;;
+  accuracy) deploy_job accuracy "-m,app.bootstrap,accuracy" ;;
   all)   "$0" data && "$0" index && "$0" warm ;;
-  *) echo "usage: $0 [data|index|warm|diagnose|all]" >&2; exit 1 ;;
+  *) echo "usage: $0 [data|index|warm|diagnose|accuracy|all]" >&2; exit 1 ;;
 esac

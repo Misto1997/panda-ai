@@ -1,4 +1,4 @@
-"""One test per planted anomaly. These guard the demo story: if the data generator changes, each scenario must stay findable."""
+"""One test per planted anomaly. These guard the planted-anomaly scenarios: if the data generator changes, each scenario must stay findable."""
 import pytest
 
 from app.core.enums import HypothesisStatus as S

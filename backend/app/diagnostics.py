@@ -138,4 +138,4 @@ class Diagnostics:
             return CheckResult("checkpoints", True, "tables not created yet")
         total_kb = sum(sizes.values()) // 1024
         return CheckResult("checkpoints", total_kb < 200_000, f"threads={threads} checkpoints={rows} size={total_kb} KB ({', '.join(f'{k}={v // 1024}KB' for k, v in sorted(sizes.items()))})",
-                           "prune old threads (see docs/DEMO_FIX_PLAN.md)" if total_kb >= 200_000 else "")
+                           "prune old threads (python -m app.bootstrap prune)" if total_kb >= 200_000 else "")

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-PANDA AI (Prompt-driven Analytics & Natural Data Access): natural-language analytics over a governed semantic layer, with guarded text-to-SQL and root-cause analysis (RCA). Built for the Google AI Builder Cup (Future of Work & Enterprise Productivity). Deep dives in `docs/`: ARCHITECTURE, CONFIGURATION, GCP_SETUP, DEBUGGING, FRONTEND_GUIDE.
+PANDA AI (Prompt-driven Analytics & Natural Data Access): natural-language analytics over a governed semantic layer, with guarded text-to-SQL and root-cause analysis (RCA). Deep dives in `docs/`: ARCHITECTURE, CONFIGURATION, GCP_SETUP, DEBUGGING, FRONTEND_GUIDE.
 
 ## Hard rules
 
@@ -13,7 +13,7 @@ PANDA AI (Prompt-driven Analytics & Natural Data Access): natural-language analy
 ## Layout
 
 ```
-semantic/        Governed layer (markdown + YAML): metrics, dimensions, tables, glossary, examples (question->SQL), rca/{trees,checks,policies}
+semantic/        OKF knowledge files (markdown + YAML frontmatter, one typed node per file): metrics, dimensions, tables, glossary, examples (question->SQL), rca/{trees,checks,policies}
 backend/app/
   main.py            create_app(): controllers, middleware, lifespan
   container.py       Composition root (the only place concrete implementations are chosen)
@@ -46,6 +46,7 @@ make setup | data | api | web     # install, 20M-order DuckDB (ARGS="--rows 2000
 make test | typecheck             # backend pytest, tsc --noEmit
 make ask Q="why did visits drop?" [DEBUG=1]   # one turn in the terminal with a step trace
 make bench                        # golden questions through the full graph (LLM_PROVIDER=gemini to grade a real model)
+make gcp-bootstrap STEP=accuracy  # same golden benchmark on the deployed stack (real model + BigQuery; dates follow the live data window)
 make config | doctor              # effective settings, dependency self-check
 make probe API=... WEB=... ID_TOKEN=...       # latency/UX probe of a running deployment (needs pip3 install httpx)
 make gcp-setup|build|deploy|bootstrap|refresh|hosting|budget|smoke|diagnose   # see docs/GCP_SETUP.md
@@ -85,7 +86,7 @@ Profiles in `config/profiles/*.yaml` (`PANDA_PROFILE`, default `local`; `prod` i
 
 ## Status
 
-Offline (mock LLM, DuckDB): fully tested. Deployed on Google Cloud: Cloud Run (web, api, jobs), AlloyDB, BigQuery, Vertex Gemini, Firebase Auth. Real-model answer quality is not graded by the offline benchmark: run `LLM_PROVIDER=gemini make bench`. Not load tested. gcloud flags marked unverified in `deploy/` and `docs/GCP_SETUP.md` should be checked against current gcloud docs.
+Offline (mock LLM, DuckDB): fully tested. Deployed on Google Cloud: Cloud Run (web, api, jobs), AlloyDB, BigQuery, Vertex Gemini, Firebase Auth. Real-model answer quality is not graded by the offline benchmark: run `LLM_PROVIDER=gemini make bench` or `make gcp-bootstrap STEP=accuracy`. Accuracy = execution accuracy: result set equals ground-truth SQL on the physical tables (`backend/tests/golden/golden.yaml`). Not load tested. gcloud flags marked unverified in `deploy/` and `docs/GCP_SETUP.md` should be checked against current gcloud docs.
 
 ## Dev environment notes
 
