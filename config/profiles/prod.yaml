@@ -29,3 +29,4 @@ cache_enabled: true
 log_level: INFO
 trace_payloads: false
 cors_origins: []   # the browser talks to the web service (same origin); only the BFF calls the API
+gemini_thinking_level: low

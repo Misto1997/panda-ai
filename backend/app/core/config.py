@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     # LLM
     llm_provider: LlmProvider = LlmProvider.MOCK
     gemini_model: str = "gemini-3.8-flash"      # ModelTier.FAST (unverified id: confirm in the Vertex model garden)
+    gemini_thinking_level: str = "low"        # Gemini 3 thinking: low | medium | high (minimal/none are not accepted by 3.8 Flash); medium is the slow default
     gemini_pro_model: str = "gemini-3.8-flash"  # ModelTier.REASONING; point at a Pro model if budget allows
     embedding_provider: EmbeddingProvider = EmbeddingProvider.AUTO  # hash = no embedding quota needed (rebuild the index after changing)
     embedding_model: str = "gemini-embedding-2"

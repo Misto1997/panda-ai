@@ -12,6 +12,7 @@ from app.core.errors import QuotaExceededError
 from app.security.auth import AuthUser
 
 GLOBAL_SUBJECT = "global"
+NO_USER_LIMIT = 10**9
 
 DDL = """
 CREATE TABLE IF NOT EXISTS panda_usage (
@@ -97,8 +98,13 @@ def _utc_today() -> date:
 
 
 class QuotaService:
-    def __init__(self, store: UsageStore, user_limit: int, global_limit: int, today: Callable[[], date] = _utc_today) -> None:
+    def __init__(self, store: UsageStore, user_limit: int, global_limit: int, today: Callable[[], date] = _utc_today,
+                 exempt_emails: frozenset[str] = frozenset()) -> None:
         self._store, self.user_limit, self.global_limit, self._today = store, user_limit, global_limit, today
+        self._exempt = frozenset(e.lower() for e in exempt_emails)  # admins: no per-user cap (the global cap still applies)
+
+    def _limit_for(self, user: AuthUser) -> int:
+        return NO_USER_LIMIT if user.email.lower() in self._exempt else self.user_limit
 
     @staticmethod
     def _subject(user: AuthUser) -> str:
@@ -106,14 +112,14 @@ class QuotaService:
 
     def remaining(self, user: AuthUser) -> int:
         used, total = self._store.peek(self._today(), self._subject(user))
-        return max(0, min(self.user_limit - used, self.global_limit - total))
+        return max(0, min(self._limit_for(user) - used, self.global_limit - total))
 
     def consume(self, user: AuthUser) -> int:
         """Charge one question. Returns what is left today, or raises QuotaExceededError (429)."""
         try:
-            used, total = self._store.consume(self._today(), self._subject(user), self.user_limit, self.global_limit)
+            used, total = self._store.consume(self._today(), self._subject(user), self._limit_for(user), self.global_limit)
         except LimitReached as e:
             msg = (f"You have used your {self.user_limit} questions for today (UTC). Come back tomorrow." if e.scope == "user"
                    else "The demo reached its daily capacity. Please try again tomorrow.")
             raise QuotaExceededError(msg, details={"remaining": 0}) from e
-        return max(0, min(self.user_limit - used, self.global_limit - total))
+        return max(0, min(self._limit_for(user) - used, self.global_limit - total))

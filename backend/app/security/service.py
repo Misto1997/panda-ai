@@ -24,7 +24,8 @@ def build_security(settings: Settings, pool: PgPool | None) -> Security:
     store = PgUsageStore(pool) if settings.quota_store == StoreKind.POSTGRES and pool else MemoryUsageStore()
     return Security(
         Authenticator.from_settings(settings),
-        QuotaService(store, settings.daily_user_query_limit, settings.daily_global_query_limit),
+        QuotaService(store, settings.daily_user_query_limit, settings.daily_global_query_limit,
+                     exempt_emails=frozenset(settings.admin_email_list)),
         IpRateLimiter(settings.ip_rate_per_minute, settings.ip_rate_burst))
 
 

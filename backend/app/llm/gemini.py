@@ -16,7 +16,8 @@ class GeminiLlm:
     def __init__(self, settings: Settings) -> None:
         from langchain_google_genai import ChatGoogleGenerativeAI
 
-        common = {"timeout": settings.llm_timeout_s, "max_retries": settings.llm_max_retries, **client_options(settings)}
+        common = {"timeout": settings.llm_timeout_s, "max_retries": settings.llm_max_retries, **client_options(settings),
+                  "reasoning_effort": settings.gemini_thinking_level}  # maps to thinking_level in the request; default (medium) costs seconds per call
         self._models = {
             ModelTier.FAST: ChatGoogleGenerativeAI(model=settings.gemini_model, **common),
             ModelTier.REASONING: ChatGoogleGenerativeAI(model=settings.gemini_pro_model, **common)  # provider default sampling: Gemini 3 degrades at low temperature,

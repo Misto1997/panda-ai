@@ -150,3 +150,18 @@ def test_embedding_rate_limit_is_retried_with_backoff_and_never_fans_out(monkeyp
     with pytest.raises(LlmError):
         e.embed(["a", "b", "c"])
     assert e._client.calls == emb.GeminiEmbedder.INDEX_ATTEMPTS
+
+
+def test_admins_are_exempt_from_the_per_user_cap_but_not_the_global_one():
+    import pytest
+    from app.core.errors import QuotaExceededError
+    from app.security.auth import AuthUser
+    from app.security.quota import MemoryUsageStore, QuotaService
+
+    quota = QuotaService(MemoryUsageStore(), user_limit=2, global_limit=5, exempt_emails=frozenset({"Boss@example.com"}))
+    boss, other = AuthUser("b", "boss@example.com"), AuthUser("o", "other@example.com")
+    for _ in range(4):
+        quota.consume(boss)                      # well past the per-user cap of 2
+    quota.consume(other)
+    with pytest.raises(QuotaExceededError):
+        quota.consume(boss)                      # the global cap of 5 still applies

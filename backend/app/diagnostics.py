@@ -28,6 +28,8 @@ class Diagnostics:
         checks: list[Callable[[], CheckResult]] = [self._config, self._warehouse, self._llm_ping if ping_llm else self._llm_info]
         if self._c.pool is not None:
             checks += [self._database, self._extensions, self._tables, self._semantic_index, self._cache_table]
+            if self._c.settings.checkpointer == StoreKind.POSTGRES:
+                checks.append(self._checkpoints)
         results = [self._guard(check) for check in checks]
         return {"ok": all(r.ok for r in results), "checks": [asdict(r) for r in results], "cache": self._c.cache.stats()}
 
@@ -113,3 +115,15 @@ class Diagnostics:
         except Exception as e:
             return CheckResult("cache", True, f"panda_cache not created yet ({type(e).__name__})")
         return CheckResult("cache", True, f"entries={dict(rows)}")
+
+    def _checkpoints(self) -> CheckResult:
+        """Conversation-state footprint: how big the LangGraph tables are and how many threads they hold."""
+        sizes = dict(self._query("SELECT relname, pg_total_relation_size(relid) FROM pg_catalog.pg_statio_user_tables "
+                                 "WHERE relname = ANY(%s)", (list(CHECKPOINT_TABLES),)))
+        try:
+            threads, rows = self._query("SELECT count(DISTINCT thread_id), count(*) FROM checkpoints")[0]
+        except Exception:
+            return CheckResult("checkpoints", True, "tables not created yet")
+        total_kb = sum(sizes.values()) // 1024
+        return CheckResult("checkpoints", total_kb < 200_000, f"threads={threads} checkpoints={rows} size={total_kb} KB ({', '.join(f'{k}={v // 1024}KB' for k, v in sorted(sizes.items()))})",
+                           "prune old threads (see docs/DEMO_FIX_PLAN.md)" if total_kb >= 200_000 else "")

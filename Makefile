@@ -1,7 +1,10 @@
 PY := backend/.venv/bin
 # Active profile = config/profiles/<name>.yaml, e.g.  make api PANDA_PROFILE=prod
 export PANDA_PROFILE ?= local
-.PHONY: doctor gcp-diagnose config setup data test bench api api-debug ask web up ingest typecheck gcp-setup gcp-build gcp-deploy gcp-bootstrap gcp-budget gcp-smoke
+.PHONY: probe doctor gcp-diagnose config setup data test bench api api-debug ask web up ingest typecheck gcp-setup gcp-build gcp-deploy gcp-bootstrap gcp-budget gcp-smoke
+
+probe:            ## latency/UX probe of a running instance: make probe API=https://panda-api-....run.app WEB=https://panda-web-....run.app ID_TOKEN=eyJ...
+	cd backend && .venv/bin/python scripts/probe.py --api $(or $(API),http://localhost:8000) $(if $(WEB),--web $(WEB),) $(ARGS)
 
 doctor:           ## check every dependency of the active profile (warehouse, database, index, model); LLM=1 makes one real model call
 	cd backend && PYTHONPATH=. ../$(PY)/python -m app.bootstrap diagnose $(if $(LLM),--llm,)

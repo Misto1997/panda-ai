@@ -67,3 +67,12 @@ def test_embedding_provider_can_be_forced_offline_without_touching_the_llm(fresh
     fresh.setenv("LLM_PROVIDER", "mock")
     s = get_settings()
     assert isinstance(create_embedder(s), HashEmbedder)
+
+
+def test_gemini_requests_use_the_configured_thinking_level():
+    from app.core.config import Settings
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
+    s = Settings(gemini_thinking_level="low")
+    model = ChatGoogleGenerativeAI(model=s.gemini_model, api_key="dummy", reasoning_effort=s.gemini_thinking_level)
+    assert str(model._prepare_params(stop=None, generation_config=None).thinking_config.thinking_level).endswith("LOW")
