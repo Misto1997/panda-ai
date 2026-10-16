@@ -64,13 +64,13 @@ def test_follow_up_uses_thread_memory(client):
 
 def test_user_facing_errors_become_error_results(client):
     _, result = ask(client, "show me widgets")
-    assert result["type"] == "error" and "No metric" in result["text"]
+    assert result["type"] == "info" and "can't answer" in result["text"] and len(result["meta"]["suggestions"]) == 4
 
 
 def test_rca_over_http(client):
     events, result = ask(client, "Why did Net GMV drop in the last 14 days?")
     components = next(e for e in events if e["type"] == "ACTIVITY_SNAPSHOT")["content"][1]["updateComponents"]["components"]
-    assert {"HypothesisList", "SegmentBars", "DecompositionTable"} <= {c["component"] for c in components}
+    assert {"HypothesisList", "VerdictHeader", "BulletList", "Grid", "DecompositionTable"} <= {c["component"] for c in components}
     assert result["type"] == "rca" and result["rca"]["drill"]["cells"][0]["segment"]["zone"] == "South"
 
 
@@ -146,3 +146,37 @@ def test_history_endpoints_and_isolation(container):
             assert c.delete("/api/threads/abc").status_code == 204 and c.get("/api/threads/abc").status_code == 404
     finally:
         container.history = old
+
+
+def test_feedback_endpoints(container):
+    import time
+
+    from app.history import MemoryFeedbackStore, MemoryHistoryStore
+    from app.security.auth import AuthUser
+    from app.security.service import authenticated_user, current_user
+
+    hist, fb = MemoryHistoryStore(), MemoryFeedbackStore()
+    old = container.history, container.feedback
+    container.history, container.feedback = hist, fb
+    try:
+        app = create_app(container)
+        app.dependency_overrides[current_user] = app.dependency_overrides[authenticated_user] = lambda: AuthUser("alice", "a@x")
+        with TestClient(app) as c:
+            assert c.post("/api/chat", json={"question": "net gmv by zone last 7 days", "thread_id": "fb1"}).status_code == 200
+            for _ in range(50):
+                if hist.list_threads("alice"):
+                    break
+                time.sleep(0.05)
+            body = {"thread_id": "fb1", "turn": 0, "rating": "down", "reasons": ["Wrong data", "Wrong data", " Too slow "], "comment": " not   right "}
+            assert c.post("/api/feedback", json=body).json() == {"ok": True}
+            (row,) = fb.rows()
+            assert row["question"].startswith("net gmv") and row["reasons"] == ["Wrong data", "Too slow"] and row["comment"] == "not right" and row["sql"]
+            c.post("/api/feedback", json={**body, "rating": "up", "reasons": [], "comment": ""})  # changing the rating replaces it
+            assert len(fb.rows()) == 1 and c.get("/api/threads/fb1/feedback").json() == {"ratings": {"0": "up"}}
+            assert c.post("/api/feedback", json={**body, "thread_id": "nope"}).status_code == 404  # unknown chat
+            assert c.post("/api/feedback", json={**body, "rating": "meh"}).status_code == 422
+            assert c.post("/api/feedback", json={**body, "comment": "x" * 241}).status_code == 422
+            app.dependency_overrides[current_user] = lambda: AuthUser("bob", "b@x")
+            assert c.post("/api/feedback", json=body).status_code == 404 and c.get("/api/threads/fb1/feedback").json() == {"ratings": {}}
+    finally:
+        container.history, container.feedback = old

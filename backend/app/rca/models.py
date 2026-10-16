@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from app.core.enums import HypothesisStatus, HypothesisTest, ValueFormat
+from app.core.enums import Direction, HypothesisStatus, HypothesisTest, ValueFormat
 
 
 class PeriodValue(BaseModel):
@@ -57,6 +57,7 @@ class RcaReport(BaseModel):
     metric: str
     title: str
     format: ValueFormat
+    direction: Direction = Direction.NEUTRAL  # polarity of the analysed metric: decides which way is "bad" in the UI
     tree: str | None
     current: PeriodValue
     baseline: PeriodValue

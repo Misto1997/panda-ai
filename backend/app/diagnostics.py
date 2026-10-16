@@ -93,10 +93,10 @@ class Diagnostics:
             wanted.append("panda_cache")
         if s.quota_store == StoreKind.POSTGRES:
             wanted.append("panda_usage")
-        if s.history_store == StoreKind.POSTGRES:
-            wanted += ["panda_threads", "panda_turns"]
+        lazy = ["panda_threads", "panda_turns", "panda_feedback"] if s.history_store == StoreKind.POSTGRES else []  # created on the first chat / rating
         missing = [t for t in wanted if t not in have]
-        return CheckResult("tables", not missing, f"present={sorted(have & set(wanted))} missing={missing}",
+        waiting = [t for t in lazy if t not in have]
+        return CheckResult("tables", not missing, f"present={sorted(have & set(wanted + lazy))} missing={missing}" + (f" not-yet-created={waiting}" if waiting else ""),
                            "semantic_docs is created by `STEP=index`; the others are created on first use" if missing else "")
 
     def _semantic_index(self) -> CheckResult:

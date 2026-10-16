@@ -10,11 +10,17 @@
     "KpiRow": { "description": "Headline numbers.", "properties": { "items": { "description": "[{label, value, delta?: number (relative change), caption?, tone?: good|bad}]", "$ref": "#/$defs/DynamicList" } }, "required": ["items"] },
     "VegaLiteChart": { "description": "Vega-Lite v5 spec (inline data).", "properties": { "spec": { "$ref": "#/$defs/DynamicObject" } }, "required": ["spec"] },
     "DataTable": { "description": "Result table.", "properties": { "table": { "description": "{columns, rows, formats, titles, truncated?}", "$ref": "#/$defs/DynamicObject" } }, "required": ["table"] },
-    "HypothesisList": { "description": "RCA hypotheses with status badges.", "properties": { "items": { "description": "[{id, claim, status: confirmed|rejected|inconclusive, evidence}]", "$ref": "#/$defs/DynamicList" } }, "required": ["items"] },
+    "HypothesisList": { "description": "RCA hypotheses as compact cards; confirmed highlighted, rejected collapsed.", "properties": { "items": { "description": "[{id, claim, status: confirmed|rejected|inconclusive, evidence}]", "$ref": "#/$defs/DynamicList" } }, "required": ["items"] },
     "DecompositionTable": { "description": "Multiplicative driver decomposition.", "properties": { "rows": { "description": "[{component, title, format, baseline, current, rel, contribution}]", "$ref": "#/$defs/DynamicList" }, "title": { "$ref": "#/$defs/DynamicString" }, "format": { "$ref": "#/$defs/DynamicString" } }, "required": ["rows"] },
     "SegmentBars": { "description": "Top segments by share of change.", "properties": { "cells": { "description": "[{label, share, rel}]", "$ref": "#/$defs/DynamicList" }, "metric": { "$ref": "#/$defs/DynamicString" } }, "required": ["cells"] },
     "ChipRow": { "description": "Small labelled badges (provenance, warnings).", "properties": { "chips": { "description": "[{label, value, tone?: good|warn}]", "$ref": "#/$defs/DynamicList" } }, "required": ["chips"] },
-    "SqlBlock": { "description": "Collapsible, read-only SQL.", "properties": { "sql": { "$ref": "#/$defs/DynamicString" } }, "required": ["sql"] }
+    "SqlBlock": { "description": "Collapsible, read-only SQL card with copy button and light syntax highlighting.", "properties": { "sql": { "$ref": "#/$defs/DynamicString" } }, "required": ["sql"] },
+    "SuggestionChips": { "description": "Clickable follow-up questions; clicking asks the question.", "properties": { "items": { "description": "[string]", "$ref": "#/$defs/DynamicList" } }, "required": ["items"] },
+    "VerdictHeader": { "description": "Headline verdict: metric, delta pill, current vs baseline with date ranges, materiality badge.", "properties": { "verdict": { "description": "{title, delta, tone: bad|good|neutral, current:{label,value,range}, baseline:{label,value,range}, material, materialLabel}", "$ref": "#/$defs/DynamicObject" } }, "required": ["verdict"] },
+    "BulletList": { "description": "Titled bulleted list (markdown subset per item).", "properties": { "title": { "$ref": "#/$defs/DynamicString" }, "items": { "description": "[string]", "$ref": "#/$defs/DynamicList" } }, "required": ["items"] },
+    "Callouts": { "description": "Warning callouts with an icon.", "properties": { "items": { "description": "[{label, value, tone?: warn}]", "$ref": "#/$defs/DynamicList" } }, "required": ["items"] },
+    "Heading": { "description": "Section heading.", "properties": { "text": { "$ref": "#/$defs/DynamicString" } }, "required": ["text"] },
+    "Grid": { "description": "Responsive grid of child components (single column on narrow screens).", "properties": { "children": { "type": "array", "items": { "$ref": "common_types.json#/$defs/ComponentId" } } }, "required": ["children"] }
   },
   "$defs": {
     "DynamicString": { "oneOf": [{ "type": "string" }, { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] }] },

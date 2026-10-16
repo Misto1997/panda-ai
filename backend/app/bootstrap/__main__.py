@@ -96,6 +96,10 @@ def run_refresh(s: Settings, rows: int, days: int, until: str | None) -> int:
         print("pruned old conversation state:", prune(s))
     except Exception as e:  # housekeeping is best effort
         print(f"warning: prune skipped: {e}", file=sys.stderr)
+    try:  # the cache was just cleared: refill it so the first judge of the day does not wait for the model
+        print(f"warmed the cache ({run_warm(s)} failure(s))")
+    except Exception as e:
+        print(f"warning: warm skipped: {e}", file=sys.stderr)
     return 0
 
 

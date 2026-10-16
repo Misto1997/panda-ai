@@ -8,7 +8,7 @@ export type SegmentContribution = {
   contribution: number; share_of_change: number | null;
 };
 export type Rca = {
-  title: string; format: string; rel: number | null; material: boolean; tree: string | null;
+  title: string; format: string; direction?: "up_is_good" | "down_is_good" | "neutral"; rel: number | null; material: boolean; tree: string | null;
   current: { start: string; end: string; value: number | null }; baseline: { start: string; end: string; value: number | null };
   checks: { id: string; title: string; fired: boolean; detail: string }[];
   decomposition: { component: string; title: string; format: string; baseline: number; current: number; rel: number | null; contribution: number }[];
@@ -20,7 +20,7 @@ export type Rca = {
 export type ResultMeta = {
   route: string; engine?: string; llm?: string; sources?: Record<string, string>; elapsed_ms?: number; cache?: CacheStatus;
   ir_source?: string; period?: string; rows?: number; docs?: string[]; tree?: string; queries?: number; total_ms?: number;
-  bytes_processed?: number; path?: string; sql_attempts?: number; narrated?: boolean;
+  bytes_processed?: number; path?: string; sql_attempts?: number; narrated?: boolean; suggestions?: string[];
 };
 export type Result = {
   type: "answer" | "rca" | "info" | "error"; text: string; table?: Table; chart?: Record<string, unknown> | null;
@@ -32,7 +32,8 @@ export type Turn = {
 };
 export type ThreadSummary = { id: string; title: string; updated_at: string; turns: number };
 export type StoredTurn = { question: string; response: Result; surface?: A2uiMessage[] | null; created_at: string };
-export type Me = { email?: string; remaining_today?: number; daily_limit?: number };
+export type Me = { email?: string; remaining_today?: number; daily_limit?: number | null; admin?: boolean };
+export type Rating = "up" | "down";
 export type CacheStats = { plan_hits: number; plan_misses: number; result_hits: number; result_misses: number; plan_entries: number; result_entries: number };
 export type Meta = {
   profile: string; app_env: string;

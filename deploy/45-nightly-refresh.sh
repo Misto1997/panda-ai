@@ -14,7 +14,7 @@ require_set DB_HOST
 source "${DEPLOY_DIR}/api_env.sh"
 JOB="panda-bootstrap-refresh"
 SCHEDULER_JOB="panda-nightly-refresh"
-SCHEDULE="${REFRESH_CRON:-30 20 * * *}"   # 20:30 UTC = 02:00 IST
+SCHEDULE="${REFRESH_CRON:-30 0 * * *}"   # 00:30 UTC = 06:00 IST: right after midnight UTC, so the data always ends on the true "yesterday"
 RUN_URI="https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB}:run"
 
 stop_date() { date -u -v+"$1"d +%F 2>/dev/null || date -u -d "+$1 days" +%F; }   # macOS then GNU date

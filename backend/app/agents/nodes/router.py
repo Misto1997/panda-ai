@@ -21,7 +21,7 @@ class RouterNode(AgentNode):
     def run(self, state: TurnState) -> NodeOutput:
         started = time.perf_counter()
         question = state["question"]
-        route, via = self._rules.route(question), "rules"
+        route, via = self._rules.route(question, has_context=bool(state.get("last_ir"))), "rules"
         if route is None:  # ambiguous: only now spend a model call
             prompt = self.deps.prompts.render(PromptId.ROUTE, question=question)
             ctx = LlmContext(question=question, vocabulary=self.deps.vocabulary, last_intent=state.get("last_ir"))
@@ -35,4 +35,4 @@ def after_route(state: TurnState) -> str:
     if state.get("response"):  # the router itself failed
         return "__end__"
     return {Route.QNA: NodeName.PLAN, Route.RCA: NodeName.RCA, Route.DISCOVER: NodeName.DISCOVER,
-            Route.HELP: NodeName.HELP}[Route(state["route"])].value
+            Route.HELP: NodeName.HELP, Route.OFF_TOPIC: NodeName.HELP}[Route(state["route"])].value

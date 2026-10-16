@@ -53,6 +53,7 @@ class ResultMeta(BaseModel):
     path: str | None = None              # how the SQL was produced: text_to_sql | ir_fallback | cache
     narrated: bool | None = None         # True when the model-written text replaced the standard summary
     sql_attempts: int | None = None      # generation + repair attempts
+    suggestions: list[str] = Field(default_factory=list)  # curated clickable questions (help / off-topic answers)
 
 
 class ChatResult(BaseModel):

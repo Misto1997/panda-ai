@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { ChevronIcon, CloseIcon, PlusIcon, SidebarIcon, SlidersIcon } from "./icons";
 import type { Meta, ThreadSummary } from "@/lib/types";
 
@@ -13,6 +13,12 @@ export function relativeTime(iso: string, now = Date.now()): string {
   return new Date(iso).toLocaleDateString();
 }
 
+const TABLE_LABELS: Record<string, string> = {
+  fact_sales: "Raw rows", agg_sales_daily: "Rollup rows", agg_traffic_city_daily: "Traffic rollup (city)", agg_bu_traffic_daily: "Traffic rollup (BU)",
+};
+const TABLE_ORDER = Object.keys(TABLE_LABELS);
+const count = (n: unknown) => (typeof n === "number" && Number.isFinite(n) ? n.toLocaleString() : "n/a");
+
 type Props = {
   collapsed: boolean; mobileOpen: boolean; onToggle: () => void; onCloseMobile: () => void;
   threads: ThreadSummary[]; threadsLoaded: boolean; activeId?: string; busy: boolean;
@@ -24,15 +30,17 @@ type Props = {
 export default function Sidebar(p: Props) {
   const [demoOpen, setDemoOpen] = useState(false);
   const cls = `sidebar${p.collapsed ? " collapsed" : ""}${p.mobileOpen ? " open" : ""}`;
-  const hits = p.meta ? p.meta.cache.plan_hits + p.meta.cache.result_hits : 0;
-  const misses = p.meta ? p.meta.cache.plan_misses + p.meta.cache.result_misses : 0;
+  const c = p.meta?.cache;
+  const hits = c ? (c.plan_hits ?? 0) + (c.result_hits ?? 0) : 0;
+  const misses = c ? (c.plan_misses ?? 0) + (c.result_misses ?? 0) : 0;
+  const tables = Object.entries(p.meta?.tables ?? {}).sort(([a], [b]) => (TABLE_ORDER.indexOf(a) + 1 || 99) - (TABLE_ORDER.indexOf(b) + 1 || 99));
   return (
     <>
       {p.mobileOpen && <div className="scrim" onClick={p.onCloseMobile} />}
       <aside className={cls} aria-label="Chats">
         <div className="side-head">
           <span className="brand-mark" aria-hidden>🐼</span>
-          <span className="brand-name">PANDA AI</span>
+          <div className="brand-text"><span className="brand-name">PANDA AI</span><span className="brand-sub">Prompt-driven Analytics &amp; Natural Data Access</span></div>
           <button className="icon-btn" onClick={p.onToggle} aria-label={p.collapsed ? "Expand sidebar" : "Collapse sidebar"} title={p.collapsed ? "Expand sidebar" : "Collapse sidebar"}><SidebarIcon /></button>
         </div>
         <button className="new-chat" onClick={p.onNew} disabled={p.busy} aria-label="New chat" title="New chat"><PlusIcon /><span className="label">New chat</span></button>
@@ -69,6 +77,7 @@ export default function Sidebar(p: Props) {
                 <dt>LLM</dt><dd>{p.meta.llm}</dd>
                 <dt>Engine</dt><dd>{p.meta.engine}</dd>
                 <dt>Search</dt><dd>{p.meta.search}</dd>
+                {tables.map(([k, n]) => <Fragment key={k}><dt>{TABLE_LABELS[k] ?? k}</dt><dd>{count(n)}</dd></Fragment>)}
                 <dt>Data through</dt><dd>{p.meta.anchor}</dd>
                 <dt>Cache</dt><dd>{hits} hits / {misses} misses</dd>
               </dl>

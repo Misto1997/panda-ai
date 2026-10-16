@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.controllers.a2ui import A2uiController
 from app.api.controllers.admin import AdminController
 from app.api.controllers.chat import ChatController
+from app.api.controllers.feedback import FeedbackController
 from app.api.controllers.history import HistoryController
 from app.api.controllers.health import HealthController
 from app.api.controllers.me import MeController
@@ -26,7 +27,7 @@ def create_app(container: Container | None = None) -> FastAPI:
         owned = container is None  # a container injected by the caller (tests) is closed by its owner
         c: Container = container or build_container()
         app.state.container = c
-        for controller in (HealthController(c), MetaController(c), ChatController(c), AdminController(c), A2uiController(), MeController(c), HistoryController(c)):
+        for controller in (HealthController(c), MetaController(c), ChatController(c), AdminController(c), A2uiController(), MeController(c), HistoryController(c), FeedbackController(c)):
             app.include_router(controller.router)
         try:
             yield

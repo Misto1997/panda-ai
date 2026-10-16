@@ -9,13 +9,15 @@ from app.agents.base import AgentNode, NodeOutput
 from app.agents.contracts import SqlDraft
 from app.agents.deps import NodeDependencies
 from app.agents.state import TurnState
-from app.core.enums import CacheStatus, DocKind, IrSource, LlmTask, NodeName, PromptId, QueryMode, QueryPath
-from app.core.errors import GuardViolationError, LlmError, LlmUnavailableError, PandaError, QueryValidationError
+from app.core.enums import CacheStatus, DocKind, IrSource, LlmTask, NodeName, PromptId, QueryMode, QueryPath, ResponseType, Route
+from app.core.errors import GuardViolationError, LlmError, LlmUnavailableError, PandaError
 from app.llm.base import LlmContext
+from app.presentation.suggestions import HELP_SUGGESTIONS
 from app.prompts.context import SqlPromptContext
 from app.query.ir import QueryIR
 from app.query.period import extract_time_expr
 from app.query.service import PreparedSql
+from app.schemas.chat import ChatResult, ResultMeta
 
 CONTEXT_DOC_KINDS = {DocKind.METRIC, DocKind.DIMENSION, DocKind.GLOSSARY}
 CONTEXT_DOCS = 8
@@ -23,7 +25,12 @@ EXAMPLE_DOCS = 4
 EXAMPLE_PREFIX = "example:"
 ALL_TIME_START = date(2000, 1, 1)  # the normaliser's stand-in when a query has no date range
 COMPARISON = re.compile(r"\b(vs|versus|compare|compared|comparison|previous|prior|than|growth|change|wow|mom|dod|yoy|against)\b")
-DECLINED = "That question cannot be answered with the available metrics. Ask about Net GMV, orders, ASP, visits or conversion."
+DECLINED = ("I can't answer that with the metrics I have. I cover Acme Retail sales and traffic (Net GMV, units, orders, ASP, visits, conversion) "
+            "by marketplace, business unit, zone, region, state and city, and I can investigate why they moved.\n\nTry one of these:")
+
+
+class _Declined(Exception):
+    """The model judged the question unanswerable from the schema (it returned no SQL). Answered with a friendly, fixed message."""
 
 
 @dataclass
@@ -59,7 +66,11 @@ class SqlPlannerNode(AgentNode):
         docs, examples = self._retrieve(question, last_ir)
         doc_ids = [d.id for d in docs]
         steps = [self.step(f"{self.deps.search.backend_name}: {', '.join(doc_ids[:6])} +{len(examples)} examples", name="retrieve")]
-        generated, attempts = self._generate(question, docs, examples, last_sql, last_ir, mode) if self.deps.settings.text_to_sql else (None, 0)
+        try:
+            generated, attempts = self._generate(question, docs, examples, last_sql, last_ir, mode) if self.deps.settings.text_to_sql else (None, 0)
+        except _Declined:
+            info = ChatResult(type=ResponseType.INFO, text=DECLINED, meta=ResultMeta(route=Route.QNA.value, suggestions=list(HELP_SUGGESTIONS)))
+            return NodeOutput({"response": info.to_state(), "docs": doc_ids}, [*steps, self.step("declined: outside the available metrics", started, name="plan")])
 
         if generated:
             intent = generated.prepared.intent
@@ -141,7 +152,8 @@ class SqlPlannerNode(AgentNode):
                 self.log.warning("sql generation output unusable: %s", e)
                 return None, attempt - 1
             if not draft.sql.strip():  # the model declined: not a failure to repair
-                raise QueryValidationError(draft.rationale or DECLINED)
+                self.log.info("model declined the question: %s", draft.rationale[:200])
+                raise _Declined
             try:
                 prepared = self._svc.prepare_sql(draft.sql, mode)
                 self._check_period(question, prepared)

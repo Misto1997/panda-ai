@@ -73,7 +73,7 @@ def test_http_auth_quota_and_no_llm_call_on_rejection(container):
             r = c.post("/api/chat", json=body)
             assert r.status_code == 401 and r.json()["code"] == "unauthenticated" and not calls
             ok = {"Authorization": "Bearer good"}
-            assert c.get("/api/me", headers=ok).json() == {"email": "a@b.c", "remaining_today": 1, "daily_limit": 1}
+            assert c.get("/api/me", headers=ok).json() == {"email": "a@b.c", "remaining_today": 1, "daily_limit": 1, "admin": False}
             assert c.post("/api/chat", json={"question": ""}, headers=ok).status_code == 422  # invalid body costs nothing
             assert c.post("/api/chat", json=body, headers=ok).status_code == 200 and len(calls) == 1
             r = c.post("/api/chat", json=body, headers=ok)
@@ -165,3 +165,12 @@ def test_admins_are_exempt_from_the_per_user_cap_but_not_the_global_one():
     quota.consume(other)
     with pytest.raises(QuotaExceededError):
         quota.consume(boss)                      # the global cap of 5 still applies
+
+
+def test_admin_is_exempt_and_reported():
+    q = QuotaService(MemoryUsageStore(), 2, 10, exempt_emails=frozenset({"Boss@x.io"}))
+    admin, user = AuthUser("a", "boss@x.io"), AuthUser("u", "u@x.io")
+    assert q.is_exempt(admin) and not q.is_exempt(user) and not q.is_exempt(AuthUser("n", ""))
+    for _ in range(5):
+        q.consume(admin)
+    assert q.remaining(admin) == 5 and q.remaining(user) == 2  # admin: what is left is the shared pool

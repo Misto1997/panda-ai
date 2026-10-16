@@ -52,7 +52,7 @@ class RcaInvestigator:
 
         log.info("rca %s: rel=%s driver=%s top=%s queries=%d", metric_id, rel, driver.id, top.segment if top else None, len(reader.queries))
         return RcaReport(
-            metric=metric.id, title=metric.title, format=metric.format, tree=tree.id if tree else None,
+            metric=metric.id, title=metric.title, format=metric.format, direction=metric.direction, tree=tree.id if tree else None,
             current=PeriodValue(start=str(current.start), end=str(current.last_day), value=now),
             baseline=PeriodValue(start=str(baseline.start), end=str(baseline.last_day), value=before),
             rel=rel, material=rel is not None and abs(rel) >= policy.value("materiality"),

@@ -103,8 +103,11 @@ class QuotaService:
         self._store, self.user_limit, self.global_limit, self._today = store, user_limit, global_limit, today
         self._exempt = frozenset(e.lower() for e in exempt_emails)  # admins: no per-user cap (the global cap still applies)
 
+    def is_exempt(self, user: AuthUser) -> bool:
+        return bool(user.email) and user.email.lower() in self._exempt
+
     def _limit_for(self, user: AuthUser) -> int:
-        return NO_USER_LIMIT if user.email.lower() in self._exempt else self.user_limit
+        return NO_USER_LIMIT if self.is_exempt(user) else self.user_limit
 
     @staticmethod
     def _subject(user: AuthUser) -> str:

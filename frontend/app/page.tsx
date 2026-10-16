@@ -1,18 +1,23 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
+import AnswerActions from "@/components/AnswerActions";
 import A2uiSurface from "@/components/a2ui/A2uiSurface";
 import { buildSurfaces, renderable } from "@/components/a2ui/surface";
 import { useAuth } from "@/components/AuthProvider";
+import { AskContext } from "@/components/blocks";
 import EmptyState from "@/components/EmptyState";
 import { MenuIcon, SendIcon } from "@/components/icons";
 import Markdown from "@/components/Markdown";
 import ResultView from "@/components/ResultView";
 import Sidebar from "@/components/Sidebar";
 import Stepper, { stageLabel } from "@/components/Stepper";
+import { fetchRatings } from "@/lib/feedback";
+import { quotaText } from "@/lib/quota";
 import { ApiError, streamRun } from "@/lib/sse";
-import { A2UI_SURFACE, type A2uiMessage, type AgUiEvent, type Me, type Meta, type StoredTurn, type ThreadSummary, type Turn } from "@/lib/types";
+import { A2UI_SURFACE, type A2uiMessage, type AgUiEvent, type Me, type Meta, type Rating, type StoredTurn, type ThreadSummary, type Turn } from "@/lib/types";
 
 const WAKE_AFTER_MS = 3000;
+const META_REFRESH_MS = 60_000;
 const SIDEBAR_KEY = "panda.sidebar.collapsed";
 const FEATURES = [
   ["Ask in plain English", "Metrics, trends and breakdowns without writing a query."],
@@ -54,8 +59,10 @@ export default function Home() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notice, setNotice] = useState<string>();
+  const [ratings, setRatings] = useState<Record<number, Rating>>({});
   const thread = useRef<string | undefined>(undefined);
   const end = useRef<HTMLDivElement>(null);
+  const quota = quotaText(me);
   const ready = !auth.loading && (!auth.enabled || Boolean(auth.email));
 
   useEffect(() => { try { setCollapsed(localStorage.getItem(SIDEBAR_KEY) === "1"); } catch { /* storage unavailable */ } }, []);
@@ -65,7 +72,7 @@ export default function Home() {
   };
 
   const setThread = (id?: string) => { thread.current = id; setActiveId(id); };
-  const resetConversation = () => { setThread(undefined); setTurns([]); setNotice(undefined); };
+  const resetConversation = () => { openSeq.current++; setThread(undefined); setTurns([]); setNotice(undefined); setRatings({}); };
   const refreshMeta = async () => {
     try {
       const r = await fetch("/api/meta", { headers: await auth.authHeaders() });
@@ -95,16 +102,32 @@ export default function Home() {
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, auth.email]);
+  // Live runtime numbers: refresh on an interval while the tab is visible, and when the tab or window regains focus.
+  const metaRefresher = useRef(refreshMeta);
+  metaRefresher.current = refreshMeta;
+  useEffect(() => {
+    if (!ready) return;
+    const tick = () => { if (document.visibilityState === "visible") void metaRefresher.current(); };
+    const timer = setInterval(tick, META_REFRESH_MS);
+    window.addEventListener("focus", tick);
+    document.addEventListener("visibilitychange", tick);
+    return () => { clearInterval(timer); window.removeEventListener("focus", tick); document.removeEventListener("visibilitychange", tick); };
+  }, [ready, auth.email]);
   useEffect(() => { end.current?.scrollIntoView({ behavior: "smooth" }); }, [turns]);
 
+  const openSeq = useRef(0);
   async function openThread(id: string) {
     if (busy) return;
+    const seq = ++openSeq.current; // only the latest click may apply its result
     setMobileOpen(false); setNotice(undefined);
     try {
       const r = await fetch(`/api/threads/${encodeURIComponent(id)}`, { headers: await auth.authHeaders() });
       if (!r.ok) throw new Error(String(r.status));
       const b = await r.json() as { turns: StoredTurn[] };
+      const restored = await fetchRatings(id, await auth.authHeaders());
+      if (seq !== openSeq.current) return;
       const base = Date.now();
+      setRatings(restored);
       setTurns(b.turns.map((t, i) => ({
         id: base + i, question: t.question, steps: [], text: t.response?.text ?? "", result: t.response,
         surface: t.surface ?? undefined, done: true,
@@ -186,14 +209,18 @@ export default function Home() {
           <button className="icon-btn menu" onClick={toggleSidebar} aria-label="Open sidebar"><MenuIcon /></button>
           <span className="spacer" />
           {auth.enabled && <>
-            {me?.remaining_today !== undefined && me.daily_limit !== undefined && <span>{me.remaining_today} / {me.daily_limit} questions left today</span>}
+            {quota && <span>{quota}</span>}
             <span>{auth.email}</span><button className="ghost" onClick={signOut}>Sign out</button></>}
         </div>
         {metaWaiting && <div className="banner wake">Waking up PANDA AI (first request after idle can take ~10-15 s)</div>}
         {notice && <div className="banner err-banner" role="alert">{notice}</div>}
         <div className="feed">
           {turns.length === 0 && <EmptyState meta={meta} busy={busy} ask={ask} />}
-          {turns.map((t) => {
+          <AskContext.Provider value={{ ask, disabled: busy }}>
+          {turns.map((t, ti) => {
+            const turnIndex = turns.slice(0, ti).filter((x) => !x.error && x.result?.type !== "error").length; // failed runs are not stored in the thread
+            const answerText = t.result?.text ?? t.text;
+            const rateable = t.done && !t.error && t.result?.type !== "error" && Boolean(activeId) && Boolean(answerText);
             const narrating = !t.done && t.steps.some((s) => s.status === "running" && s.node === "narrate");
             return (
               <div key={t.id} className="turn">
@@ -205,8 +232,11 @@ export default function Home() {
                 <div key={t.result?.meta?.narrated ? "narrated" : "standard"} className="answer-wrap"><TurnBody t={t} /></div>
                 {narrating && <div className="hint" role="status">Writing insights…</div>}
                 {t.error && <div className="result error">{t.error}</div>}
+                {rateable && activeId && <AnswerActions key={`${activeId}:${turnIndex}`} threadId={activeId} turn={turnIndex} question={t.question} text={answerText} table={t.result?.table}
+                  rating={ratings[turnIndex]} onRated={(r) => { if (thread.current === activeId) setRatings((cur) => ({ ...cur, [turnIndex]: r })); }} />}
               </div>);
           })}
+          </AskContext.Provider>
           <div ref={end} />
         </div>
         <form onSubmit={(e) => { e.preventDefault(); ask(q); }}>

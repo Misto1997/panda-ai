@@ -4,7 +4,7 @@
 import React from "react";
 import Chart from "../Chart";
 import Markdown from "../Markdown";
-import { Chips, DataTable, DecompositionTable, HypothesisList, KpiRow, SegmentBars, SqlBlock, type ChipItem, type DecompRow, type Hyp, type Kpi as KpiT, type SegCell } from "../blocks";
+import { BulletList, Callouts, Chips, DataTable, DecompositionTable, Heading, HypothesisList, KpiRow, SegmentBars, SqlBlock, SuggestionChips, VerdictHeader, type ChipItem, type DecompRow, type Hyp, type Kpi as KpiT, type SegCell, type Verdict } from "../blocks";
 import type { Table } from "@/lib/types";
 import { KNOWN_COMPONENTS, resolve, type Surface } from "./surface";
 
@@ -26,6 +26,12 @@ const registry: Record<string, (p: Props, children: React.ReactNode[]) => React.
   SegmentBars: (p) => <SegmentBars cells={list<SegCell>(p.cells)} metric={p.metric as string} />,
   ChipRow: (p) => { const chips = list<ChipItem>(p.chips); return chips.length ? <Chips chips={chips} /> : null; },
   SqlBlock: (p) => (p.sql ? <SqlBlock sql={String(p.sql)} /> : null),
+  SuggestionChips: (p) => <SuggestionChips items={list<string>(p.items).filter((x) => typeof x === "string")} />,
+  VerdictHeader: (p) => (p.verdict && typeof p.verdict === "object" ? <VerdictHeader verdict={p.verdict as Verdict} /> : null),
+  BulletList: (p) => <BulletList title={p.title as string | undefined} items={list<string>(p.items).filter((x) => typeof x === "string")} />,
+  Callouts: (p) => <Callouts items={list<ChipItem>(p.items)} />,
+  Heading: (p) => (p.text ? <Heading text={String(p.text)} /> : null),
+  Grid: (_p, children) => <div className="a2-grid">{children}</div>,
 };
 
 class Boundary extends React.Component<{ label: string; children: React.ReactNode }, { failed: boolean }> {

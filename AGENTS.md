@@ -86,7 +86,7 @@ Profiles in `config/profiles/*.yaml` (`PANDA_PROFILE`, default `local`; `prod` i
 
 ## Status and known gaps (updated)
 
-Done and tested offline (mock LLM, DuckDB; 136 tests): text-to-SQL path with guard, rewriter, dry-run, repair loop, IR fallback, SQL->IR cache keys; RCA; AG-UI + A2UI UI; auth and quota code; BigQuery SQL translation; golden benchmark harness; Dockerfiles and deploy scripts.
+Done and tested offline (mock LLM, DuckDB; 147 tests): text-to-SQL path with guard, rewriter, dry-run, repair loop, IR fallback, SQL->IR cache keys; RCA; AG-UI + A2UI UI; auth and quota code; BigQuery SQL translation; golden benchmark harness; Dockerfiles and deploy scripts.
 **Unverified (needs real GCP):** Gemini/Agent Platform calls and model ids (`gemini-3.8-flash` default), BigQuery load and queries, AlloyDB/Postgres (pool, pgvector DDL, cache store, quota tables), Firebase sign-in end to end, Direct VPC egress, both Docker builds, every gcloud flag marked unverified in `deploy/` and `docs/GCP_SETUP.md`. The golden benchmark on the mock only validates the harness; real accuracy comes from `LLM_PROVIDER=gemini make bench`.
 Target hosting: Cloud Run (web, api, jobs) + AlloyDB (Postgres + pgvector; Cloud SQL works by changing `DATABASE_URL`) + BigQuery + Vertex Gemini (`location=global`) + Firebase Auth only. Nothing runs on a laptop in production.
 
@@ -99,4 +99,6 @@ Target hosting: Cloud Run (web, api, jobs) + AlloyDB (Postgres + pgvector; Cloud
 - The stream sends the result twice on purpose: first a standard summary with the data, later the same result with `meta.narrated=true` and model text (the UI replaces the first; TEXT_MESSAGE_START resets text). `NarrateNode` must never replace a good response with an error.
 - Model calls are bounded: `llm_timeout_s` 25, `llm_max_retries` 1, `llm_max_concurrency` 6 per instance, narration 12 s without retries. Provider error text goes to logs and `details`, never to the user.
 - Dates come from the deterministic `extract_time_expr` plus the planner's period guard (SQL must cover the period named in the question); plan-cache keys carry the data anchor date.
+- Anchor (data date) is re-read from the warehouse every 60 s (`LazyPeriodResolver` TTL), so a refresh needs no restart. Off-topic and 'who are you' replies are static (`HelpNode`, no model call) with 4 curated clickable `meta.suggestions`; the model router can also return `off_topic`; a model-declined SQL question gets the same style of friendly answer.
+- Feedback: `POST /api/feedback` (thumbs, reasons, comment) writes `panda_feedback` (Postgres when `history_store=postgres`); recorded only, nothing reads it back yet.
 - Dataset freshness: nightly roll-forward job (`deploy/45-nightly-refresh.sh`, stops after its `--until` date); `prune` removes idle conversation state.

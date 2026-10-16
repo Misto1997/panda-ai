@@ -3,6 +3,8 @@ Intervals are half-open [start, end). 'today' is anchor+1, so 'yesterday' is the
 from __future__ import annotations
 
 import re
+import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -108,16 +110,32 @@ class PeriodResolver:
 
 
 class LazyPeriodResolver(PeriodResolver):
-    """Looks the anchor date up on first use, so the service can start (and report not-ready) before any data is loaded."""
+    """Looks the anchor date up on first use (so the service can start, and report not-ready, before any data is loaded) and re-reads it every
+    `ttl_s` seconds: the nightly refresh moves the data window while instances keep running. A failed re-read keeps the last known anchor."""
 
-    def __init__(self, load_anchor: Callable[[], date]) -> None:
-        self._load, self._anchor = load_anchor, None
+    def __init__(self, load_anchor: Callable[[], date], ttl_s: float = 60.0, clock: Callable[[], float] = time.monotonic) -> None:
+        self._load, self._ttl, self._clock = load_anchor, ttl_s, clock
+        self._anchor: date | None = None
+        self._read_at = 0.0
+        self._lock = threading.Lock()
 
     @property
     def anchor(self) -> date:
-        if self._anchor is None:
-            self._anchor = self._load()  # raises EngineError while the tables do not exist; retried on the next call
-        return self._anchor
+        with self._lock:
+            known, fresh = self._anchor, self._anchor is not None and self._clock() - self._read_at < self._ttl
+            if not fresh and known is not None:
+                self._read_at = self._clock()  # one caller re-reads; the others keep using the known date meanwhile (and a flapping warehouse is not hammered)
+        if fresh:
+            return known
+        try:
+            loaded = self._load()  # warehouse call outside the lock; raises EngineError while the tables do not exist (retried on the next call)
+        except Exception:
+            if known is None:
+                raise
+            return known
+        with self._lock:
+            self._anchor, self._read_at = loaded, self._clock()
+        return loaded
 
     @property
     def today(self) -> date:

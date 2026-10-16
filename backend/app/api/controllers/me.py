@@ -16,4 +16,5 @@ class MeController:
         self.router.add_api_route("/me", self.me, methods=["GET"])
 
     def me(self, user: AuthUser = Depends(current_user)) -> dict:
-        return {"email": user.email, "remaining_today": self._quota.remaining(user), "daily_limit": self._quota.user_limit}
+        admin = self._quota.is_exempt(user)  # admins have no personal cap: what is left is the shared global pool
+        return {"email": user.email, "remaining_today": self._quota.remaining(user), "daily_limit": None if admin else self._quota.user_limit, "admin": admin}

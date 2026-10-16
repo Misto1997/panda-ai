@@ -255,9 +255,9 @@ def test_planner_falls_back_to_ir_after_exhausting_repairs(container):
     assert out["ir"]["metrics"] == ["net_gmv"]  # filled by the (mock) IR planner and compiled by code
 
 
-def test_planner_declined_question_is_a_user_facing_error(container):
+def test_planner_declined_question_gets_a_friendly_answer_with_suggestions(container):
     out = run_planner(container, ScriptedLlm(""), question="show me widgets")
-    assert out["response"]["type"] == "error"
+    assert out["response"]["type"] == "info" and out["response"]["meta"]["suggestions"]
 
 
 def test_end_to_end_meta_path_attempts_and_plan_cache(container):

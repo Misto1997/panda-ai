@@ -7,6 +7,7 @@ class Route(StrEnum):
     RCA = "rca"
     DISCOVER = "discover"
     HELP = "help"
+    OFF_TOPIC = "off_topic"
 
 
 class NodeName(StrEnum):
@@ -84,6 +85,12 @@ class A2uiComponent(StrEnum):
     SEGMENT_BARS = "SegmentBars"
     CHIP_ROW = "ChipRow"
     SQL_BLOCK = "SqlBlock"
+    SUGGESTION_CHIPS = "SuggestionChips"
+    VERDICT_HEADER = "VerdictHeader"
+    BULLET_LIST = "BulletList"
+    CALLOUTS = "Callouts"
+    HEADING = "Heading"
+    GRID = "Grid"
 
 
 class CacheStatus(StrEnum):

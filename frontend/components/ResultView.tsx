@@ -2,8 +2,9 @@
 // Plain renderer of the `panda.result` payload. Used when the A2UI surface is absent or fails to render.
 import Chart from "./Chart";
 import Markdown from "./Markdown";
-import { Chips, DataTable, DecompositionTable, HypothesisList, SegmentBars, SqlBlock, type ChipItem } from "./blocks";
-import type { Result } from "@/lib/types";
+import { Callouts, Chips, DataTable, DecompositionTable, HypothesisList, SegmentBars, SqlBlock, SuggestionChips, VerdictHeader, type ChipItem, type Verdict } from "./blocks";
+import { fmt, pct } from "@/lib/format";
+import type { Rca, Result } from "@/lib/types";
 
 const DIM_ORDER = ["marketplace", "zone", "region", "state", "city", "business_unit"];
 const pctOf = (v: number | null) => (v === null ? "" : `${(v * 100).toFixed(0)}%`);
@@ -23,24 +24,42 @@ function metaChips(meta: Result["meta"]): ChipItem[] {
   return c;
 }
 
+const dayBefore = (iso: string) => { const d = new Date(`${iso}T00:00:00Z`); return Number.isNaN(d.getTime()) ? iso : new Date(d.getTime() - 864e5).toISOString().slice(0, 10); };
+const span = (p: Rca["current"]) => (p?.start && p?.end ? `${p.start} to ${dayBefore(p.end)}` : "");
+
+const toneOf = (rel: number | null | undefined, dir?: string) =>
+  !rel || (dir !== "up_is_good" && dir !== "down_is_good") ? "neutral" : (rel > 0) === (dir === "up_is_good") ? "good" : "bad";
+
+function verdictOf(r: Rca): Verdict {
+  return {
+    title: r.title, delta: r.rel === null || r.rel === undefined ? "n/a" : pct(r.rel), tone: toneOf(r.rel, r.direction),
+    current: { label: "Current", value: fmt(r.current?.value, r.format), range: span(r.current) }, baseline: { label: "Baseline", value: fmt(r.baseline?.value, r.format), range: span(r.baseline) },
+    material: r.material,
+  };
+}
+
 export default function ResultView({ result }: { result: Result }) {
   const r = result.rca;
   const seg = (s: Record<string, string>) => Object.entries(s).map(([k, v]) => `${k}=${v}`).join(", ");
   return (
     <div className={`result ${result.type}`}>
-      <div className="answer"><Markdown text={result.text} /></div>
+      {!r && <div className="answer"><Markdown text={result.text} /></div>}
       {result.chart && <Chart spec={result.chart} />}
       {r && (
         <div className="rca">
-          {r.checks.some((c) => c.fired) && <div className="warn-box">{r.checks.filter((c) => c.fired).map((c) => `${c.title}: ${c.detail}`).join(" · ")}</div>}
+          <VerdictHeader verdict={verdictOf(r)} />
+          <Callouts items={r.checks.filter((c) => c.fired).map((c) => ({ label: c.title, value: c.detail }))} />
           {r.decomposition.length > 0 && <DecompositionTable rows={r.decomposition} title={r.title} format={r.format} />}
           <SegmentBars metric={r.drill_metric} cells={r.drill.cells.map((c) => ({ label: seg(c.segment), share: c.share_of_change, rel: c.rel }))} />
           {Object.keys(r.drill.marginals).length > 0 && (
             <Chips chips={Object.entries(r.drill.marginals).sort(([a], [b]) => DIM_ORDER.indexOf(a) - DIM_ORDER.indexOf(b))
               .map(([dim, m]) => ({ label: dim.replace("_", " "), value: `${m.segment[dim]} · ${pctOf(m.share_of_change)}` }))} />)}
           <HypothesisList items={r.hypotheses} />
+          <h4 className="section-heading">Analyst summary</h4>
+          <div className="answer"><Markdown text={result.text} /></div>
           <div className="muted">Runbook {r.tree} · {r.queries_run} governed queries · baseline {r.baseline.start}..{r.baseline.end}</div>
         </div>)}
+      {result.meta.suggestions && result.meta.suggestions.length > 0 && <SuggestionChips items={result.meta.suggestions} />}
       {result.table && result.table.rows.length > 1 && <DataTable t={result.table} />}
       {result.sql && <SqlBlock sql={result.sql} />}
       <Chips chips={metaChips(result.meta)} />

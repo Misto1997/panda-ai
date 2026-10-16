@@ -28,20 +28,21 @@ def rca_summary(f: dict) -> str:
         return (f"There is no comparable data for {f['title']}: the analysed period " f"({f['current']['start']}..{f['current']['end']}) or its baseline "
                 f"({f['baseline']['start']}..{f['baseline']['end']}) has no rows.")
     verb = "fell" if (f["rel"] or 0) < 0 else "rose"
-    lines = [f"**{f['title']} {verb} {abs(f['rel'] or 0):.1%}** ({format_value(f['baseline']['value'], fmt)} to {format_value(f['current']['value'], fmt)}), "
-             f"comparing {f['current']['start']}..{f['current']['end']} with {f['baseline']['start']}..{f['baseline']['end']}."]
+    head = (f"**{f['title']} {verb} {abs(f['rel'] or 0):.1%}** ({format_value(f['baseline']['value'], fmt)} to {format_value(f['current']['value'], fmt)}), "
+            f"comparing {f['current']['start']}..{f['current']['end']} with {f['baseline']['start']}..{f['baseline']['end']}.")
+    bullets = []
     if f["decomposition"]:
         d = f["decomposition"][0]
-        lines.append(f"Largest driver: **{d['title']}** ({d['rel']:+.1%}), contributing {format_value(d['contribution'], fmt)} of the change.")
+        bullets.append(f"Largest driver: **{d['title']}** ({d['rel']:+.1%}), contributing {format_value(d['contribution'], fmt)} of the change.")
     cells = f["drill"]["cells"]
     if cells and cells[0]["share_of_change"] is not None:
         c = cells[0]
-        lines.append(f"The movement is concentrated in **{', '.join(f'{k}={v}' for k, v in c['segment'].items())}**, "
-                     f"which explains {c['share_of_change']:.0%} of the change.")
-    lines += [f"Confirmed: {h['claim']} ({h['evidence']})." for h in f["hypotheses"] if h["status"] == "confirmed"]
-    lines += [f"Caution: {c['title']} fired ({c['detail']})." for c in f["checks"] if c["fired"]]
-    if not any(h["status"] == "confirmed" for h in f["hypotheses"]):
-        lines.append("No hypothesis was confirmed, so the cause is not established.")
+        bullets.append(f"Concentrated in **{', '.join(f'{k}={v}' for k, v in c['segment'].items())}**, which explains {c['share_of_change']:.0%} of the change.")
+    confirmed = [h for h in f["hypotheses"] if h["status"] == "confirmed"]
+    bullets += [f"Confirmed: **{h['claim']}** ({h['evidence']})." for h in confirmed]
+    bullets += [f"Caution: {c['title']} fired ({c['detail']})." for c in f["checks"] if c["fired"]]
+    if not confirmed:
+        bullets.append("No hypothesis was confirmed, so the cause is not established.")
     if not f["material"]:
-        lines.append("The overall movement is below the materiality threshold.")
-    return "\n\n".join(lines)
+        bullets.append("The overall movement is below the materiality threshold.")
+    return head + "\n\n" + "\n".join(f"- {b}" for b in bullets)

@@ -34,7 +34,7 @@ class HistoryController:
     """GET /api/threads, GET|DELETE /api/threads/{id}: the caller's own chat history."""
 
     def __init__(self, container: Container) -> None:
-        self._store = container.history
+        self._store, self._feedback = container.history, container.feedback
         self.router = APIRouter(prefix="/api", tags=["history"])
         self.router.add_api_route("/threads", self.list_threads, methods=["GET"])
         self.router.add_api_route("/threads/{thread_id}", self.get_thread, methods=["GET"])
@@ -54,4 +54,8 @@ class HistoryController:
 
     async def delete_thread(self, thread_id: str, user: AuthUser = Depends(current_user)) -> Response:
         await run_in_threadpool(self._store.delete_thread, user.uid, _valid(thread_id))  # idempotent
+        try:
+            await run_in_threadpool(self._feedback.delete_thread, user.uid, thread_id)
+        except Exception:
+            log.warning("feedback of a deleted chat not removed", exc_info=True)
         return Response(status_code=204)

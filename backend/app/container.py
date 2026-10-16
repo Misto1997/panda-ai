@@ -12,7 +12,7 @@ from app.cache.semantic_cache import SemanticCache
 from app.core.config import Settings, get_settings
 from app.core.db import PgPool
 from app.core.logging import configure_logging, get_logger
-from app.history import HistoryStore, create_history_store
+from app.history import FeedbackStore, HistoryStore, create_feedback_store, create_history_store
 from app.engines.base import QueryEngine
 from app.engines.factory import create_engine
 from app.llm.base import LlmClient
@@ -44,6 +44,7 @@ class Container:
     runner: TurnRunner
     security: Security
     history: HistoryStore
+    feedback: FeedbackStore
     pool: PgPool | None = None
     _closers: list[Callable[[], None]] = field(default_factory=list)
 
@@ -69,4 +70,4 @@ def build_container(settings: Settings | None = None) -> Container:
     runner = TurnRunner(build_graph(deps, checkpointer))
     log.info("started: llm=%s engine=%s search=%s (data anchor is resolved on first use; see /ready)", llm.name, engine.name, search.backend_name)
     closers = [engine.close, cache.close, close_checkpointer] + ([pool.close] if pool else [])
-    return Container(settings, catalog, engine, cache, llm, search, service, runner, build_security(settings, pool), create_history_store(settings, pool), pool, closers)
+    return Container(settings, catalog, engine, cache, llm, search, service, runner, build_security(settings, pool), create_history_store(settings, pool), create_feedback_store(settings, pool), pool, closers)
