@@ -47,3 +47,10 @@ class PgPool:
     def close(self) -> None:
         if self._pool is not None:
             self._pool.close()
+
+
+def execute_script(conn: psycopg.Connection, script: str) -> None:
+    """Run several DDL statements one by one. The pool uses prepared statements (prepare_threshold=0), and Postgres
+    refuses multiple commands inside one prepared statement. Only for trusted, literal-free DDL: it splits on ';'."""
+    for statement in filter(None, (part.strip() for part in script.split(";"))):
+        conn.execute(statement)

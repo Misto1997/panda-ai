@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.core.config import Settings, get_settings
-from app.core.db import PgPool
+from app.core.db import PgPool, execute_script
 from app.core.enums import VectorIndexKind
 from app.core.errors import ConfigurationError
 from app.llm.embeddings import create_embedder
@@ -27,7 +27,7 @@ def build_index(settings: Settings, pool: PgPool | None = None) -> int:
             row = conn.execute(_DIM_SQL).fetchone()
             if row and row[0] != settings.embedding_dim:  # embedding model/dimension changed: the index is derived data, rebuild it
                 conn.execute("DROP TABLE semantic_docs")
-            conn.execute(DDL.format(dim=settings.embedding_dim))
+            execute_script(conn, DDL.format(dim=settings.embedding_dim))
             with conn.transaction():
                 for doc, vec in zip(docs, vectors):
                     conn.execute(
@@ -36,8 +36,7 @@ def build_index(settings: Settings, pool: PgPool | None = None) -> int:
                         (doc.id, doc.kind.value, doc.title, doc.text, vector_literal(vec)))
                 conn.execute("DELETE FROM semantic_docs WHERE NOT (id = ANY(%s))", ([d.id for d in docs],))
             if settings.vector_index != VectorIndexKind.NONE:
-                for stmt in filter(None, (s.strip() for s in INDEX_DDL[settings.vector_index].split(";"))):
-                    conn.execute(stmt)
+                execute_script(conn, INDEX_DDL[settings.vector_index])
     finally:
         if owned:
             pool.close()

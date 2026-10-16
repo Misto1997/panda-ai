@@ -86,3 +86,19 @@ def test_oversized_body_rejected(container):
     with _client(container) as c:
         r = c.post("/api/chat", content=b"x" * 40_000, headers={"content-type": "application/json"})
         assert r.status_code == 413 and r.json()["code"] == "request_too_large"
+
+
+def test_ddl_scripts_are_split_into_single_statements():
+    """Regression: the pool prepares every statement, and Postgres rejects multi-command prepared statements."""
+    from app.core.db import execute_script
+    from app.search.pgvector import DDL, INDEX_DDL
+    from app.core.enums import VectorIndexKind
+
+    class Recorder:
+        def __init__(self): self.sql = []
+        def execute(self, statement): self.sql.append(statement)
+
+    conn = Recorder()
+    execute_script(conn, DDL.format(dim=768))
+    execute_script(conn, INDEX_DDL[VectorIndexKind.SCANN])
+    assert len(conn.sql) == 5 and all(";" not in stmt for stmt in conn.sql)

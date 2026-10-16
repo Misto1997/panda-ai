@@ -9,6 +9,7 @@ from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool, PoolTimeout
 
 from app.core.enums import CacheLayer
+from app.core.db import execute_script
 from app.core.logging import get_logger
 
 log = get_logger("cache.postgres")
@@ -62,7 +63,7 @@ class PostgresCacheStore:
             if not self._ready:
                 self._pool.open()
                 with self._pool.connection() as conn:
-                    conn.execute(DDL)
+                    execute_script(conn, DDL)
                 self._ready = True
             with self._pool.connection() as conn:
                 cur = conn.execute(sql, params)
