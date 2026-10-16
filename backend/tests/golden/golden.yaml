@@ -1,0 +1,232 @@
+version: 1
+anchor: '2026-09-30'
+items:
+- id: value_1
+  category: value
+  turns:
+  - Net GMV last 7 days
+  sql: SELECT SUM(net_gmv) AS net_gmv FROM fact_sales WHERE order_date >= DATE '2026-09-24' AND order_date < DATE '2026-10-01'
+- id: value_2
+  category: value
+  turns:
+  - orders yesterday
+  sql: SELECT SUM(orders) AS orders FROM fact_sales WHERE order_date >= DATE '2026-09-30' AND order_date < DATE '2026-10-01'
+- id: value_3
+  category: value
+  turns:
+  - ASP last 30 days
+  sql: SELECT SUM(net_gmv) / SUM(net_units) AS asp FROM fact_sales WHERE order_date >= DATE '2026-09-01' AND order_date < DATE '2026-10-01'
+- id: value_4
+  category: value
+  turns:
+  - cancellation rate last 14 days
+  sql: SELECT (SUM(gross_gmv) - SUM(net_gmv)) / SUM(gross_gmv) AS cancellation_rate FROM fact_sales WHERE order_date >= DATE '2026-09-17' AND order_date < DATE '2026-10-01'
+- id: value_5
+  category: value
+  turns:
+  - visits last 7 days
+  sql: SELECT SUM(visits) AS visits FROM agg_traffic_city_daily WHERE visit_date >= DATE '2026-09-24' AND visit_date < DATE '2026-10-01'
+- id: value_6
+  category: value
+  turns:
+  - conversion rate last 7 days
+  sql: SELECT SUM(orders) * 1.0 / SUM(visits) AS conversion_rate FROM agg_traffic_city_daily WHERE visit_date >= DATE '2026-09-24' AND visit_date < DATE '2026-10-01'
+- id: value_7
+  category: value
+  turns:
+  - net gmv last month
+  sql: SELECT SUM(net_gmv) AS net_gmv FROM fact_sales WHERE order_date >= DATE '2026-09-01' AND order_date < DATE '2026-10-01'
+- id: value_8
+  category: value
+  turns:
+  - net gmv last week
+  sql: SELECT SUM(net_gmv) AS net_gmv FROM fact_sales WHERE order_date >= DATE '2026-09-21' AND order_date < DATE '2026-09-28'
+- id: breakdown_1
+  category: breakdown
+  turns:
+  - Net GMV by zone last 7 days
+  sql: SELECT zone, SUM(net_gmv) AS net_gmv FROM fact_sales WHERE order_date >= DATE '2026-09-24' AND order_date < DATE '2026-10-01' GROUP BY 1
+- id: breakdown_2
+  category: breakdown
+  turns:
+  - orders by marketplace last 14 days
+  sql: SELECT marketplace, SUM(orders) AS orders FROM fact_sales WHERE order_date >= DATE '2026-09-17' AND order_date < DATE '2026-10-01' GROUP BY 1
+- id: breakdown_3
+  category: breakdown
+  turns:
+  - ASP by business unit last 30 days
+  sql: SELECT business_unit, SUM(net_gmv) / SUM(net_units) AS asp FROM fact_sales WHERE order_date >= DATE '2026-09-01' AND order_date < DATE '2026-10-01' GROUP BY 1
+- id: breakdown_4
+  category: breakdown
+  turns:
+  - cancellation rate by region last 14 days
+  sql: SELECT region, (SUM(gross_gmv) - SUM(net_gmv)) / SUM(gross_gmv) AS cancellation_rate FROM fact_sales WHERE order_date >= DATE '2026-09-17' AND order_date < DATE '2026-10-01' GROUP BY 1
+- id: breakdown_5
+  category: breakdown
+  turns:
+  - visits by zone last 7 days
+  sql: SELECT zone, SUM(visits) AS visits FROM agg_traffic_city_daily WHERE visit_date >= DATE '2026-09-24' AND visit_date < DATE '2026-10-01' GROUP BY 1
+- id: breakdown_6
+  category: breakdown
+  turns:
+  - conversion rate by marketplace last 14 days
+  sql: SELECT marketplace, SUM(orders) * 1.0 / SUM(visits) AS conversion_rate FROM agg_traffic_city_daily WHERE visit_date >= DATE '2026-09-17' AND visit_date < DATE '2026-10-01' GROUP BY 1
+- id: breakdown_7
+  category: breakdown
+  turns:
+  - net gmv by state last 7 days
+  sql: SELECT state, SUM(net_gmv) AS net_gmv FROM fact_sales WHERE order_date >= DATE '2026-09-24' AND order_date < DATE '2026-10-01' GROUP BY 1
+- id: breakdown_8
+  category: breakdown
+  turns:
+  - bu conversion rate by business unit last 14 days
+  sql: SELECT business_unit, SUM(orders) * 1.0 / SUM(bu_visits) AS bu_conversion_rate FROM agg_bu_traffic_daily WHERE visit_date >= DATE '2026-09-17' AND visit_date < DATE '2026-10-01' GROUP BY 1
+- id: breakdown_9
+  category: breakdown
+  turns:
+  - orders by marketplace and by business unit last 14 days
+  sql: SELECT marketplace, business_unit, SUM(orders) AS orders FROM fact_sales WHERE order_date >= DATE '2026-09-17' AND order_date < DATE '2026-10-01' GROUP BY 1, 2
+- id: trend_1
+  category: trend
+  turns:
+  - daily net gmv last 14 days
+  sql: SELECT DATE_TRUNC('day', order_date) AS date, SUM(net_gmv) AS net_gmv FROM fact_sales WHERE order_date >= DATE '2026-09-17' AND order_date < DATE '2026-10-01' GROUP BY 1
+- id: trend_2
+  category: trend
+  turns:
+  - weekly orders last 30 days
+  sql: SELECT DATE_TRUNC('week', order_date) AS date, SUM(orders) AS orders FROM fact_sales WHERE order_date >= DATE '2026-09-01' AND order_date < DATE '2026-10-01' GROUP BY 1
+- id: trend_3
+  category: trend
+  turns:
+  - monthly net gmv last 90 days
+  sql: SELECT DATE_TRUNC('month', order_date) AS date, SUM(net_gmv) AS net_gmv FROM fact_sales WHERE order_date >= DATE '2026-07-03' AND order_date < DATE '2026-10-01' GROUP BY 1
+- id: trend_4
+  category: trend
+  turns:
+  - daily conversion rate last 14 days
+  sql: SELECT DATE_TRUNC('day', visit_date) AS date, SUM(orders) * 1.0 / SUM(visits) AS conversion_rate FROM agg_traffic_city_daily WHERE visit_date >= DATE '2026-09-17' AND visit_date < DATE '2026-10-01'
+    GROUP BY 1
+- id: trend_5
+  category: trend
+  turns:
+  - net gmv trend by marketplace last 14 days
+  sql: SELECT DATE_TRUNC('day', order_date) AS date, marketplace, SUM(net_gmv) AS net_gmv FROM fact_sales WHERE order_date >= DATE '2026-09-17' AND order_date < DATE '2026-10-01' GROUP BY 1, 2
+- id: city_1
+  category: city_level
+  turns:
+  - net gmv by city last 7 days
+  sql: SELECT city, SUM(net_gmv) AS net_gmv FROM fact_sales WHERE order_date >= DATE '2026-09-24' AND order_date < DATE '2026-10-01' GROUP BY 1
+- id: city_2
+  category: city_level
+  turns:
+  - orders by city last 14 days
+  sql: SELECT city, SUM(orders) AS orders FROM fact_sales WHERE order_date >= DATE '2026-09-17' AND order_date < DATE '2026-10-01' GROUP BY 1
+- id: city_3
+  category: city_level
+  turns:
+  - visits by city last 7 days
+  sql: SELECT city, SUM(visits) AS visits FROM agg_traffic_city_daily WHERE visit_date >= DATE '2026-09-24' AND visit_date < DATE '2026-10-01' GROUP BY 1
+- id: city_4
+  category: city_level
+  turns:
+  - cancellation rate by city last 14 days
+  sql: SELECT city, (SUM(gross_gmv) - SUM(net_gmv)) / SUM(gross_gmv) AS cancellation_rate FROM fact_sales WHERE order_date >= DATE '2026-09-17' AND order_date < DATE '2026-10-01' GROUP BY 1
+- id: filter_1
+  category: filter
+  turns:
+  - net gmv in the South zone last 7 days
+  sql: SELECT SUM(net_gmv) AS net_gmv FROM fact_sales WHERE order_date >= DATE '2026-09-24' AND order_date < DATE '2026-10-01' AND zone IN ('South')
+- id: filter_2
+  category: filter
+  turns:
+  - orders for Acme Express last 14 days
+  sql: SELECT SUM(orders) AS orders FROM fact_sales WHERE order_date >= DATE '2026-09-17' AND order_date < DATE '2026-10-01' AND marketplace IN ('Acme Express')
+- id: filter_3
+  category: filter
+  turns:
+  - ASP by business unit for Acme Mall last 30 days
+  sql: SELECT business_unit, SUM(net_gmv) / SUM(net_units) AS asp FROM fact_sales WHERE order_date >= DATE '2026-09-01' AND order_date < DATE '2026-10-01' AND marketplace IN ('Acme Mall') GROUP BY 1
+- id: filter_4
+  category: filter
+  turns:
+  - visits in Karnataka last 7 days
+  sql: SELECT SUM(visits) AS visits FROM agg_traffic_city_daily WHERE visit_date >= DATE '2026-09-24' AND visit_date < DATE '2026-10-01' AND state IN ('Karnataka')
+- id: filter_5
+  category: filter
+  turns:
+  - net gmv by marketplace for Grocery last 14 days
+  sql: SELECT marketplace, SUM(net_gmv) AS net_gmv FROM fact_sales WHERE order_date >= DATE '2026-09-17' AND order_date < DATE '2026-10-01' AND business_unit IN ('Grocery') GROUP BY 1
+- id: topn_1
+  category: top_n
+  turns:
+  - net gmv by state top 5 last 7 days
+  sql: SELECT state, SUM(net_gmv) AS net_gmv FROM fact_sales WHERE order_date >= DATE '2026-09-24' AND order_date < DATE '2026-10-01' GROUP BY 1 ORDER BY net_gmv DESC LIMIT 5
+- id: topn_2
+  category: top_n
+  turns:
+  - orders by city top 5 last 7 days
+  sql: SELECT city, SUM(orders) AS orders FROM fact_sales WHERE order_date >= DATE '2026-09-24' AND order_date < DATE '2026-10-01' GROUP BY 1 ORDER BY orders DESC LIMIT 5
+- id: topn_3
+  category: top_n
+  turns:
+  - top 3 net gmv by marketplace last 30 days
+  sql: SELECT marketplace, SUM(net_gmv) AS net_gmv FROM fact_sales WHERE order_date >= DATE '2026-09-01' AND order_date < DATE '2026-10-01' GROUP BY 1 ORDER BY net_gmv DESC LIMIT 3
+- id: multi_1
+  category: multi_table
+  turns:
+  - net gmv and visits by marketplace last 7 days
+  sql: WITH s AS (SELECT marketplace, SUM(net_gmv) AS net_gmv FROM fact_sales WHERE order_date >= DATE '2026-09-24' AND order_date < DATE '2026-10-01' GROUP BY 1), t AS (SELECT marketplace, SUM(visits)
+    AS visits FROM agg_traffic_city_daily WHERE visit_date >= DATE '2026-09-24' AND visit_date < DATE '2026-10-01' GROUP BY 1) SELECT s.marketplace, s.net_gmv, t.visits FROM s JOIN t USING (marketplace)
+- id: multi_2
+  category: multi_table
+  turns:
+  - orders and conversion rate by zone last 14 days
+  sql: WITH s AS (SELECT zone, SUM(orders) AS orders FROM fact_sales WHERE order_date >= DATE '2026-09-17' AND order_date < DATE '2026-10-01' GROUP BY 1), t AS (SELECT zone, SUM(orders) * 1.0 / SUM(visits)
+    AS conversion_rate FROM agg_traffic_city_daily WHERE visit_date >= DATE '2026-09-17' AND visit_date < DATE '2026-10-01' GROUP BY 1) SELECT s.zone, s.orders, t.conversion_rate FROM s JOIN t USING (zone)
+- id: pop_1
+  category: period_over_period
+  turns:
+  - Compare net gmv by zone last 7 days vs the previous 7 days
+  xfail_mock: the mock's intent extraction has no period-comparison concept, so it answers only the current period
+  sql: WITH c AS (SELECT zone, SUM(net_gmv) AS cur FROM fact_sales WHERE order_date >= DATE '2026-09-24' AND order_date < DATE '2026-10-01' GROUP BY 1), p AS (SELECT zone, SUM(net_gmv) AS prev FROM fact_sales
+    WHERE order_date >= DATE '2026-09-17' AND order_date < DATE '2026-09-24' GROUP BY 1) SELECT zone, cur, prev, (cur - prev) / prev AS pct_change FROM c JOIN p USING (zone)
+- id: pop_2
+  category: period_over_period
+  turns:
+  - orders last 7 days vs previous 7 days
+  xfail_mock: the mock's intent extraction has no period-comparison concept, so it answers only the current period
+  sql: SELECT SUM(CASE WHEN order_date >= DATE '2026-09-24' THEN orders END) AS cur, SUM(CASE WHEN order_date < DATE '2026-09-24' THEN orders END) AS prev FROM fact_sales WHERE order_date >= DATE '2026-09-17'
+    AND order_date < DATE '2026-10-01'
+- id: pop_3
+  category: period_over_period
+  turns:
+  - net gmv growth by marketplace week over week
+  xfail_mock: the mock's intent extraction has no period-comparison concept, so it answers only the current period
+  sql: WITH c AS (SELECT marketplace, SUM(net_gmv) AS cur FROM fact_sales WHERE order_date >= DATE '2026-09-24' AND order_date < DATE '2026-10-01' GROUP BY 1), p AS (SELECT marketplace, SUM(net_gmv) AS
+    prev FROM fact_sales WHERE order_date >= DATE '2026-09-17' AND order_date < DATE '2026-09-24' GROUP BY 1) SELECT marketplace, (cur - prev) / prev AS growth FROM c JOIN p USING (marketplace)
+- id: followup_1
+  category: follow_up
+  turns:
+  - Net GMV by zone last 7 days
+  - and by marketplace?
+  sql: SELECT marketplace, SUM(net_gmv) AS net_gmv FROM fact_sales WHERE order_date >= DATE '2026-09-24' AND order_date < DATE '2026-10-01' GROUP BY 1
+- id: followup_2
+  category: follow_up
+  turns:
+  - orders by region last 14 days
+  - only for Acme Mall
+  sql: SELECT region, SUM(orders) AS orders FROM fact_sales WHERE order_date >= DATE '2026-09-17' AND order_date < DATE '2026-10-01' AND marketplace IN ('Acme Mall') GROUP BY 1
+- id: followup_3
+  category: follow_up
+  turns:
+  - net gmv last 30 days
+  - daily
+  sql: SELECT DATE_TRUNC('day', order_date) AS date, SUM(net_gmv) AS net_gmv FROM fact_sales WHERE order_date >= DATE '2026-09-01' AND order_date < DATE '2026-10-01' GROUP BY 1
+- id: followup_4
+  category: follow_up
+  turns:
+  - visits by zone last 7 days
+  - what about conversion rate?
+  sql: SELECT zone, SUM(orders) * 1.0 / SUM(visits) AS conversion_rate FROM agg_traffic_city_daily WHERE visit_date >= DATE '2026-09-24' AND visit_date < DATE '2026-10-01' GROUP BY 1
+  xfail_mock: the mock treats a newly named metric as a fresh question and drops the previous dimension; a real model carries it over

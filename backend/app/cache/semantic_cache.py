@@ -1,55 +1,24 @@
-"""Two-layer semantic cache (in-process; the store is swappable for Postgres/Redis in phase 2).
- plan layer  : normalised question (+ conversation context) -> QueryIR   (skips the LLM planning call)
- result layer: canonical resolved intent                    -> result    (skips the engine; paraphrases share an entry)"""
+"""Two-layer semantic cache on a pluggable CacheStore (in-memory TTL/LRU, or Postgres when DATABASE_URL is set).
+ plan layer  : normalised question (+ conversation context) -> {sql, ir, ...}  (skips the LLM generation call)
+ result layer: canonical intent                             -> result          (skips the engine; equivalent SQL shares an entry)
+Cache failures never fail a turn."""
 from __future__ import annotations
 
 import hashlib
 import json
 import re
 import threading
-import time
-from collections import OrderedDict
 from dataclasses import asdict, dataclass
-from typing import Generic, TypeVar
 
 from app.core.config import Settings
-from app.core.enums import QueryMode
+from app.core.enums import CacheLayer, QueryMode
+from app.core.logging import get_logger
+from app.cache.store import CacheStore, MemoryCacheStore
 from app.query.ir import QueryIR
+from app.query.normalizer import Intent
 from app.query.period import Period
 
-T = TypeVar("T")
-
-
-class TtlLruCache(Generic[T]):
-    def __init__(self, ttl_s: float, max_entries: int) -> None:
-        self._ttl, self._max = ttl_s, max_entries
-        self._data: OrderedDict[str, tuple[float, T]] = OrderedDict()
-        self._lock = threading.Lock()
-
-    def get(self, key: str) -> T | None:
-        with self._lock:
-            entry = self._data.get(key)
-            if entry is None:
-                return None
-            if time.monotonic() - entry[0] > self._ttl:
-                del self._data[key]
-                return None
-            self._data.move_to_end(key)
-            return entry[1]
-
-    def put(self, key: str, value: T) -> None:
-        with self._lock:
-            self._data[key] = (time.monotonic(), value)
-            self._data.move_to_end(key)
-            while len(self._data) > self._max:
-                self._data.popitem(last=False)
-
-    def clear(self) -> None:
-        with self._lock:
-            self._data.clear()
-
-    def __len__(self) -> int:
-        return len(self._data)
+log = get_logger("cache")
 
 
 @dataclass
@@ -62,60 +31,96 @@ class CacheStats:
     result_entries: int = 0
 
 
+def create_cache_store(settings: Settings) -> CacheStore:
+    if settings.database_url:
+        from app.cache.postgres_store import PostgresCacheStore  # imported lazily: psycopg pool only when configured
+        return PostgresCacheStore(settings.database_url, settings.cache_ttl_s)
+    return MemoryCacheStore(settings.cache_ttl_s, settings.cache_max_entries)
+
+
 class SemanticCache:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, store: CacheStore | None = None) -> None:
         self.enabled = settings.cache_enabled
-        self._plans: TtlLruCache[dict] = TtlLruCache(settings.cache_ttl_s, settings.cache_max_entries)
-        self._results: TtlLruCache[dict] = TtlLruCache(settings.cache_ttl_s, settings.cache_max_entries)
+        self._store = store or create_cache_store(settings)
         self._stats = CacheStats()
         self._lock = threading.Lock()
 
     # ---- keys ----
     @staticmethod
-    def plan_key(question: str, prior_metrics: list[str]) -> str:
+    def plan_key(question: str, context: str = "") -> str:
+        """context: anything that changes the meaning of the question (the previous SQL for follow-ups)."""
         normalised = re.sub(r"[^a-z0-9 ]", "", question.lower()).strip()
-        return f"{normalised}|{','.join(sorted(prior_metrics))}"
+        return _digest(f"{normalised}|{context}")
 
     @staticmethod
     def result_key(ir: QueryIR, period: Period, mode: QueryMode) -> str:
-        canon = {"m": sorted(ir.metrics), "d": sorted(ir.dimensions),
+        # Order of metrics and dimensions is part of the key: it is the column order of the result.
+        canon = {"m": ir.metrics, "d": ir.dimensions,
                  "f": sorted((f.dim, sorted(f.values), f.negate) for f in ir.filters),
                  "s": str(period.start), "e": str(period.end), "g": ir.grain.value, "o": ir.order_by,
                  "od": ir.order_desc, "l": ir.limit, "mode": mode.value}
-        return hashlib.sha1(json.dumps(canon, default=str).encode()).hexdigest()
+        return _digest(json.dumps(canon, default=str))
+
+    @classmethod
+    def intent_key(cls, intent: Intent, mode: QueryMode) -> str:
+        """Equivalent SQL shares an entry when the intent is exact; anything else is keyed on the normalised SQL text."""
+        if intent.exact and intent.ir and intent.period:
+            return cls.result_key(intent.ir, intent.period, mode)
+        return _digest(f"sql|{intent.fingerprint}|{mode.value}")
 
     # ---- plan layer ----
     def get_plan(self, key: str) -> dict | None:
-        hit = self._plans.get(key) if self.enabled else None
-        self._count("plan", hit is not None)
-        return hit
+        return self._get(CacheLayer.PLAN, key)
 
     def put_plan(self, key: str, plan: dict) -> None:
-        if self.enabled:
-            self._plans.put(key, plan)
+        self._put(CacheLayer.PLAN, key, plan)
 
     # ---- result layer ----
     def get_result(self, key: str) -> dict | None:
-        hit = self._results.get(key) if self.enabled else None
-        self._count("result", hit is not None)
-        return hit
+        return self._get(CacheLayer.RESULT, key)
 
     def put_result(self, key: str, result: dict) -> None:
-        if self.enabled:
-            self._results.put(key, result)
+        self._put(CacheLayer.RESULT, key, result)
 
     # ---- admin ----
     def stats(self) -> dict:
         with self._lock:
-            return asdict(CacheStats(**{**asdict(self._stats), "plan_entries": len(self._plans), "result_entries": len(self._results)}))
+            snapshot = CacheStats(**{**asdict(self._stats), "plan_entries": self._store.size(CacheLayer.PLAN),
+                                     "result_entries": self._store.size(CacheLayer.RESULT)})
+        return asdict(snapshot)
 
     def clear(self) -> None:
-        self._plans.clear()
-        self._results.clear()
+        self._store.clear()
         with self._lock:
             self._stats = CacheStats()
 
-    def _count(self, layer: str, hit: bool) -> None:
+    def close(self) -> None:
+        self._store.close()
+
+    # ---- internals ----
+    def _get(self, layer: CacheLayer, key: str) -> dict | None:
+        hit = None
+        if self.enabled:
+            try:
+                hit = self._store.get(layer, key)
+            except Exception as e:  # a broken store must not fail the turn
+                log.warning("cache get failed: %s", e)
+        self._count(layer, hit is not None)
+        return hit
+
+    def _put(self, layer: CacheLayer, key: str, value: dict) -> None:
+        if not self.enabled:
+            return
+        try:
+            self._store.put(layer, key, value)
+        except Exception as e:
+            log.warning("cache put failed: %s", e)
+
+    def _count(self, layer: CacheLayer, hit: bool) -> None:
         with self._lock:
-            name = f"{layer}_{'hits' if hit else 'misses'}"
+            name = f"{layer.value}_{'hits' if hit else 'misses'}"
             setattr(self._stats, name, getattr(self._stats, name) + 1)
+
+
+def _digest(text: str) -> str:
+    return hashlib.sha1(text.encode()).hexdigest()

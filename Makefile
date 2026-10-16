@@ -1,5 +1,5 @@
 PY := backend/.venv/bin
-.PHONY: setup data test api api-debug ask web up ingest typecheck
+.PHONY: setup data test bench api api-debug ask web up ingest typecheck gcp-setup gcp-build gcp-deploy gcp-bootstrap gcp-budget gcp-smoke
 
 setup:            ## install backend + frontend deps
 	python3.12 -m venv backend/.venv && $(PY)/pip install -e "backend[dev]"
@@ -10,6 +10,9 @@ data:             ## generate synthetic Acme Retail data (20M orders) into DuckD
 
 test:
 	cd backend && PYTHONPATH=. ../$(PY)/python -m pytest -q
+
+bench:            ## golden question benchmark through the full graph (set LLM_PROVIDER=gemini to grade a real model): make bench ARGS="-v"
+	cd backend && PYTHONPATH=. ../$(PY)/python -m app.bench $(ARGS)
 
 api:              ## query gateway on :8000
 	cd backend && ../$(PY)/uvicorn app.main:app --reload --port 8000
@@ -31,3 +34,22 @@ up:               ## optional Postgres + pgvector
 
 ingest:           ## index semantic/ into pgvector (needs DATABASE_URL)
 	cd backend && PYTHONPATH=. ../$(PY)/python -m app.search.ingest
+
+# --- Google Cloud (read docs/GCP_SETUP.md; needs deploy/env.sh) ---
+gcp-setup:        ## APIs, Artifact Registry, secrets, service account roles
+	deploy/00-setup.sh
+
+gcp-build:        ## Cloud Build both images
+	deploy/10-build.sh
+
+gcp-deploy:       ## deploy API then web to Cloud Run
+	deploy/20-deploy-api.sh && deploy/30-deploy-web.sh
+
+gcp-bootstrap:    ## Cloud Run Jobs: load BigQuery, index AlloyDB, warm cache (STEP=data|index|warm|all)
+	deploy/40-bootstrap-job.sh $(or $(STEP),all)
+
+gcp-budget:       ## budget alerts + kill-switch
+	deploy/50-budget.sh
+
+gcp-smoke:        ## curl the deployed services
+	deploy/60-smoke.sh

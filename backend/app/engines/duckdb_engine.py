@@ -9,7 +9,7 @@ import duckdb
 
 from app.core.errors import EngineError, QueryTimeoutError
 from app.core.logging import get_logger
-from app.engines.base import QueryResult
+from app.engines.base import DryRunInfo, QueryResult
 
 log = get_logger("engine.duckdb")
 
@@ -51,6 +51,17 @@ class DuckDBEngine:
         elapsed = (time.perf_counter() - started) * 1000
         log.debug("ran query in %.1f ms, %d rows", elapsed, len(rows))
         return QueryResult(columns, rows, elapsed)
+
+    def dry_run(self, sql: str) -> DryRunInfo:
+        """Plan the statement (binds tables and columns, type checks) without executing it."""
+        cursor = self._con.cursor()
+        try:
+            cursor.execute(f"EXPLAIN {sql}")
+            return DryRunInfo(ok=True)
+        except duckdb.Error as e:
+            return DryRunInfo(ok=False, error=str(e).splitlines()[0])
+        finally:
+            cursor.close()
 
     def max_date(self, table: str, column: str) -> date:
         value = self._con.execute(f"SELECT MAX({column}) FROM {table}").fetchone()[0]

@@ -11,13 +11,13 @@ from app.core.enums import DocKind
 from app.core.errors import CatalogError
 from app.core.logging import get_logger
 from app.semantic.catalog import Catalog
-from app.semantic.models import (CheckSpec, DimensionSpec, Doc, GlossarySpec, MetricSpec, PolicySpec, RcaTreeSpec, TableSpec)
+from app.semantic.models import (CheckSpec, DimensionSpec, Doc, ExampleSpec, GlossarySpec, MetricSpec, PolicySpec, RcaTreeSpec, TableSpec)
 
 log = get_logger("semantic.loader")
 _FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n?(.*)\Z", re.S)
 _SPECS: dict[str, type[BaseModel]] = {
     "metric": MetricSpec, "dimension": DimensionSpec, "table": TableSpec, "glossary": GlossarySpec,
-    "rca_tree": RcaTreeSpec, "rca_check": CheckSpec, "rca_policy": PolicySpec,
+    "rca_tree": RcaTreeSpec, "rca_check": CheckSpec, "rca_policy": PolicySpec, "example": ExampleSpec,
 }
 
 
@@ -47,8 +47,8 @@ def load_catalog(directory: str | Path) -> Catalog:
             raise CatalogError(f"{path}: {e}") from e
         _register(cat, spec, body)
     cat.validate_references()
-    log.info("catalog loaded: %d metrics, %d dimensions, %d tables, %d rca trees, %d docs",
-             len(cat.metrics), len(cat.dimensions), len(cat.tables), len(cat.trees), len(cat.docs))
+    log.info("catalog loaded: %d metrics, %d dimensions, %d tables, %d rca trees, %d examples, %d docs",
+             len(cat.metrics), len(cat.dimensions), len(cat.tables), len(cat.trees), len(cat.examples), len(cat.docs))
     return cat
 
 
@@ -79,3 +79,9 @@ def _register(cat: Catalog, spec: BaseModel, body: str) -> None:
         cat.docs.append(Doc(id=spec.id, kind=DocKind.RCA_CHECK, title=spec.title, text=f"{spec.title}: {spec.description}"))
     elif isinstance(spec, PolicySpec):
         cat.policies[spec.id] = spec
+    elif isinstance(spec, ExampleSpec):
+        if spec.id in cat.examples:
+            raise CatalogError(f"duplicate example id {spec.id}")
+        cat.examples[spec.id] = spec
+        cat.docs.append(Doc(id=f"example:{spec.id}", kind=DocKind.EXAMPLE, title=spec.question,
+                            text=f"{spec.question} {' '.join(spec.tags)} {body}"))

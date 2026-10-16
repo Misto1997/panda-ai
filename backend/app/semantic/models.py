@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.core.enums import CheckKind, DocKind, Direction, HypothesisTest, Movement, Scope, TimeGrain, ValueFormat
 
+LOGICAL_DIALECT = "duckdb"  # dialect the model writes logical SQL in; engines transpile from it
+
 
 class MetricSpec(BaseModel):
     kind: Literal["metric"]
@@ -58,6 +60,7 @@ class TableSpec(BaseModel):
     rollup: str
     time_column: str
     rollup_dimensions: list[str] = Field(default_factory=list)
+    measures: list[str] = Field(default_factory=list)  # additive base columns exposed on the logical table (same name raw and rollup)
     anchor: bool = False  # the table whose latest date defines "today"
 
 
@@ -137,6 +140,15 @@ class PolicySpec(BaseModel):
 
     def value(self, name: str) -> float:
         return self.rules[name].value
+
+
+class ExampleSpec(BaseModel):
+    """A question with a known-good logical SQL answer. Retrieved into the text-to-sql prompt as a few-shot example."""
+    kind: Literal["example"]
+    id: str
+    question: str
+    sql: str
+    tags: list[str] = Field(default_factory=list)
 
 
 class Doc(BaseModel):

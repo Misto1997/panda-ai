@@ -3,12 +3,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.enums import CacheStatus, ResponseType
 
 
 class ChatRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    run_id: str | None = Field(default=None, alias="runId", max_length=64, pattern=r"^[A-Za-z0-9_-]+$")  # AG-UI run id, optional
     question: str = Field(min_length=1, max_length=2000)
     thread_id: str | None = Field(default=None, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     force_raw: bool = False
@@ -46,6 +49,9 @@ class ResultMeta(BaseModel):
     tree: str | None = None
     queries: int | None = None
     total_ms: float | None = None
+    bytes_processed: int | None = None   # engine-reported scan size (BigQuery)
+    path: str | None = None              # how the SQL was produced: text_to_sql | ir_fallback | cache
+    sql_attempts: int | None = None      # generation + repair attempts
 
 
 class ChatResult(BaseModel):

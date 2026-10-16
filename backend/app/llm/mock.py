@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from app.core.enums import LlmTask, ModelTier, Route
+from app.core.enums import Confidence, LlmTask, ModelTier, Route
 from app.llm.base import LlmContext, Prompt, T, Term
 from app.presentation.narrative import answer_summary, rca_summary
 
@@ -33,7 +33,8 @@ class MockLlm:
     def structured(self, schema: type[T], prompt: Prompt, context: LlmContext | None = None) -> T:
         ctx = context or LlmContext()
         q = ctx.question.lower()
-        builder = {"RouteDecision": self._route, "RcaRequest": self._rca_request, "QueryIR": self._query_ir}.get(schema.__name__)
+        builder = {"RouteDecision": self._route, "RcaRequest": self._rca_request, "QueryIR": self._query_ir,
+                   "SqlDraft": self._sql_draft}.get(schema.__name__)
         if builder is None:
             raise NotImplementedError(schema.__name__)
         return schema(**builder(q, ctx))
@@ -79,6 +80,18 @@ class MockLlm:
         return {"metrics": metrics, "dimensions": dims, "filters": filters, "time_expr": time_expr, "grain": grain,
                 "order_by": metrics[0] if metrics and dims else None,
                 "order_desc": not re.search(r"\b(bottom|lowest|worst)\b", q), "limit": int(top.group(1)) if top else None}
+
+    def _sql_draft(self, q: str, ctx: LlmContext) -> dict:
+        """Renders the intent it understands as logical SQL, the way a real model is asked to. Repair is a no-op (the mock cannot
+        reason about errors), so a rejected draft falls through to the IR fallback."""
+        if ctx.task == LlmTask.SQL_REPAIR:
+            return {"sql": (ctx.payload or {}).get("sql") or "", "rationale": "mock cannot repair SQL", "confidence": Confidence.LOW}
+        ir = self._query_ir(q, ctx)
+        if not ir["metrics"] or ctx.render_sql is None:
+            return {"sql": "", "rationale": "No metric identified. Ask about a metric such as Net GMV, orders, ASP or visits.",
+                    "confidence": Confidence.LOW}
+        return {"sql": ctx.render_sql(ir), "rationale": f"mock: {ir['metrics']} by {ir['dimensions']} over {ir['time_expr']}",
+                "confidence": Confidence.MEDIUM}
 
     @staticmethod
     def _metrics(q: str, metrics: list[Term]) -> list[str]:

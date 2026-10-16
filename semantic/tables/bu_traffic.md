@@ -6,6 +6,7 @@ description: Daily visits to each business unit's pages. A visit touching severa
 raw: agg_bu_traffic_daily
 rollup: agg_bu_traffic_daily
 time_column: visit_date
+measures: [bu_visits, orders]
 rollup_dimensions:
 - marketplace
 - business_unit

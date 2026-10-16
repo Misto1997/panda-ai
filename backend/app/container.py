@@ -10,6 +10,7 @@ from app.agents.graph import build_graph
 from app.agents.runner import TurnRunner
 from app.cache.semantic_cache import SemanticCache
 from app.core.config import Settings, get_settings
+from app.core.db import PgPool
 from app.core.logging import configure_logging, get_logger
 from app.engines.base import QueryEngine
 from app.engines.factory import create_engine
@@ -22,6 +23,7 @@ from app.prompts.registry import PROMPTS
 from app.query.service import QueryService
 from app.rca.investigator import RcaInvestigator
 from app.search.factory import create_search
+from app.security.service import Security, build_security
 from app.search.hybrid import HybridSearch
 from app.semantic.catalog import Catalog
 from app.semantic.loader import load_catalog
@@ -39,6 +41,7 @@ class Container:
     search: HybridSearch
     query_service: QueryService
     runner: TurnRunner
+    security: Security
     _closers: list[Callable[[], None]] = field(default_factory=list)
 
     def close(self) -> None:
@@ -53,7 +56,8 @@ def build_container(settings: Settings | None = None) -> Container:
     engine = create_engine(settings)
     cache = SemanticCache(settings)
     llm = create_llm(settings)
-    search = create_search(settings, catalog, create_embedder(settings))
+    pool = PgPool.from_settings(settings) if settings.database_url else None  # lazy: no connection until first use
+    search = create_search(settings, catalog, create_embedder(settings), pool)
     service = QueryService(catalog, engine, cache, settings)
     deps = NodeDependencies(settings=settings, catalog=catalog, llm=llm, prompts=PROMPTS, search=search, query_service=service,
                             investigator=RcaInvestigator(catalog, service), cache=cache, charts=ChartBuilder(catalog),
@@ -61,4 +65,5 @@ def build_container(settings: Settings | None = None) -> Container:
     checkpointer, close_checkpointer = create_checkpointer(settings)
     runner = TurnRunner(build_graph(deps, checkpointer))
     log.info("ready: llm=%s engine=%s search=%s anchor=%s", llm.name, engine.name, search.backend_name, service.anchor)
-    return Container(settings, catalog, engine, cache, llm, search, service, runner, [engine.close, close_checkpointer])
+    closers = [engine.close, cache.close, close_checkpointer] + ([pool.close] if pool else [])
+    return Container(settings, catalog, engine, cache, llm, search, service, runner, build_security(settings, pool), closers)

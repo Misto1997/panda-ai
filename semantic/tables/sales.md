@@ -7,6 +7,7 @@ description: Order-level sales facts. Served from the daily rollup (state grain)
 raw: fact_sales
 rollup: agg_sales_daily
 time_column: order_date
+measures: [orders, gross_units, net_units, gross_gmv, net_gmv]
 rollup_dimensions:
 - marketplace
 - business_unit

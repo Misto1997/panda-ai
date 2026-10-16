@@ -1,0 +1,24 @@
+{
+  "$id": "https://panda.ai/a2ui/catalog/v1",
+  "catalogId": "https://panda.ai/a2ui/catalog/v1",
+  "title": "PANDA AI answer catalog",
+  "description": "Custom A2UI v0.9 catalog for PANDA answer cards. Any property documented as Dynamic accepts a literal or a {\"path\": \"/json/pointer\"} binding into the surface data model.",
+  "theme": { "variant": { "enum": ["default", "error"] } },
+  "components": {
+    "Column": { "description": "Vertical layout container.", "properties": { "children": { "type": "array", "items": { "$ref": "common_types.json#/$defs/ComponentId" } } }, "required": ["children"] },
+    "Text": { "description": "Markdown subset: **bold**, `code`, '- ' bullets, paragraphs. Never raw HTML.", "properties": { "text": { "$ref": "#/$defs/DynamicString" } }, "required": ["text"] },
+    "KpiRow": { "description": "Headline numbers.", "properties": { "items": { "description": "[{label, value, delta?: number (relative change), caption?, tone?: good|bad}]", "$ref": "#/$defs/DynamicList" } }, "required": ["items"] },
+    "VegaLiteChart": { "description": "Vega-Lite v5 spec (inline data).", "properties": { "spec": { "$ref": "#/$defs/DynamicObject" } }, "required": ["spec"] },
+    "DataTable": { "description": "Result table.", "properties": { "table": { "description": "{columns, rows, formats, titles, truncated?}", "$ref": "#/$defs/DynamicObject" } }, "required": ["table"] },
+    "HypothesisList": { "description": "RCA hypotheses with status badges.", "properties": { "items": { "description": "[{id, claim, status: confirmed|rejected|inconclusive, evidence}]", "$ref": "#/$defs/DynamicList" } }, "required": ["items"] },
+    "DecompositionTable": { "description": "Multiplicative driver decomposition.", "properties": { "rows": { "description": "[{component, title, format, baseline, current, rel, contribution}]", "$ref": "#/$defs/DynamicList" }, "title": { "$ref": "#/$defs/DynamicString" }, "format": { "$ref": "#/$defs/DynamicString" } }, "required": ["rows"] },
+    "SegmentBars": { "description": "Top segments by share of change.", "properties": { "cells": { "description": "[{label, share, rel}]", "$ref": "#/$defs/DynamicList" }, "metric": { "$ref": "#/$defs/DynamicString" } }, "required": ["cells"] },
+    "ChipRow": { "description": "Small labelled badges (provenance, warnings).", "properties": { "chips": { "description": "[{label, value, tone?: good|warn}]", "$ref": "#/$defs/DynamicList" } }, "required": ["chips"] },
+    "SqlBlock": { "description": "Collapsible, read-only SQL.", "properties": { "sql": { "$ref": "#/$defs/DynamicString" } }, "required": ["sql"] }
+  },
+  "$defs": {
+    "DynamicString": { "oneOf": [{ "type": "string" }, { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] }] },
+    "DynamicList": { "oneOf": [{ "type": "array" }, { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] }] },
+    "DynamicObject": { "oneOf": [{ "type": "object" }, { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] }] }
+  }
+}

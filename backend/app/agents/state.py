@@ -13,13 +13,21 @@ class TurnState(TypedDict, total=False):
     question: str
     options: TurnOptions
     route: str
-    ir: dict | None
-    ir_source: str | None
+    ir: dict | None           # canonical intent: normalised from the generated SQL, or filled by the LLM on the fallback path
+    ir_source: str | None     # IrSource
     docs: list[str]
-    query: dict | None        # {sql, sources, period, columns, rows, elapsed_ms, cache}
+    sql: str | None           # logical SQL written by the LLM (text-to-sql path); None on the IR fallback path
+    path: str | None          # QueryPath
+    sql_attempts: int | None  # generation + repair calls
+    rationale: str | None
+    confidence: str | None
+    bytes_processed: int | None
+    query: dict | None        # {sql, sources, period, columns, rows, elapsed_ms, cache, column_metrics, date_columns}
     response: dict | None     # ChatResult.to_state()
-    last_ir: dict | None
+    last_ir: dict | None      # survives across turns (follow-ups); derived from the generated SQL
+    last_sql: str | None      # survives across turns: the previous logical SQL
     trace: Annotated[list[dict], lambda _old, new: new]  # steps of the node that just ran (replaced, not accumulated)
 
 
-TURN_RESET: dict = {"ir": None, "ir_source": None, "docs": [], "query": None, "response": None}
+TURN_RESET: dict = {"ir": None, "ir_source": None, "docs": [], "sql": None, "path": None, "sql_attempts": None, "rationale": None,
+                    "confidence": None, "bytes_processed": None, "query": None, "response": None}

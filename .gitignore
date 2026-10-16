@@ -232,3 +232,4 @@ frontend/.next/
 # frontend build artefacts
 frontend/next-env.d.ts
 *.tsbuildinfo
+deploy/env.sh

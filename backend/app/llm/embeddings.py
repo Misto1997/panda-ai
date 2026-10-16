@@ -10,6 +10,7 @@ import numpy as np
 from app.core.config import Settings
 from app.core.enums import LlmProvider
 from app.core.errors import LlmError
+from app.llm.vertex import client_options
 
 _TOKEN = re.compile(r"[a-z0-9]+")
 
@@ -44,7 +45,8 @@ class GeminiEmbedder:
         from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
         self.dim = settings.embedding_dim
-        self._client = GoogleGenerativeAIEmbeddings(model=settings.embedding_model, output_dimensionality=settings.embedding_dim)
+        self._client = GoogleGenerativeAIEmbeddings(model=settings.embedding_model, output_dimensionality=settings.embedding_dim,
+                                                  **client_options(settings, settings.embedding_location))
 
     def embed(self, texts: list[str]) -> np.ndarray:
         try:

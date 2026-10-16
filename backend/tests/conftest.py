@@ -11,7 +11,8 @@ def settings() -> Settings:
     s = get_settings()
     if not Path(s.duckdb_path).exists():
         pytest.skip("synthetic data missing: run `make data` first")
-    return s.model_copy(update={"llm_provider": "mock", "database_url": "", "cache_enabled": True})
+    return s.model_copy(update={"llm_provider": "mock", "database_url": "", "cache_enabled": True,
+                           "daily_user_query_limit": 10_000, "daily_global_query_limit": 10_000, "ip_rate_burst": 10_000})
 
 
 @pytest.fixture(scope="session")

@@ -8,8 +8,14 @@ from app.core.errors import ConfigurationError
 from app.engines.base import QueryEngine
 from app.engines.duckdb_engine import DuckDBEngine
 
+def _bigquery(s: Settings) -> QueryEngine:
+    from app.engines.bigquery_engine import BigQueryEngine  # lazy: keeps the BigQuery client off the DuckDB start-up path
+    return BigQueryEngine.from_settings(s)
+
+
 _REGISTRY: dict[EngineKind, Callable[[Settings], QueryEngine]] = {
     EngineKind.DUCKDB: lambda s: DuckDBEngine(s.duckdb_path),
+    EngineKind.BIGQUERY: _bigquery,
 }
 
 

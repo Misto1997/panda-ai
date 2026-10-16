@@ -9,6 +9,8 @@ def answer_summary(columns: list[str], rows: list[list], formats: dict[str, str]
     if not rows:
         return "No data matched that question for the selected period."
     metric_cols = [c for c in columns if c in formats]
+    if not metric_cols:
+        return f"{len(rows)} row(s) returned."
     if len(rows) == 1:
         return "For the selected period: " + ", ".join(
             f"**{titles[c]}** is {format_value(rows[0][columns.index(c)], formats[c])}" for c in metric_cols) + "."

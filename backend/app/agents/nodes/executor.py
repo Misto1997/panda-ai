@@ -4,27 +4,44 @@ import time
 
 from app.agents.base import AgentNode, NodeOutput
 from app.agents.state import TurnState
-from app.core.enums import NodeName, QueryMode
+from app.core.enums import NodeName, QueryMode, TimeGrain
 from app.query.ir import QueryIR
+from app.query.period import Period
 
 
 class ExecutorNode(AgentNode):
-    """Compiles the intent to governed SQL, validates it, runs it (through the result-layer cache)."""
+    """Runs the plan: model-written SQL is rewritten to physical tables and guarded; the IR fallback is compiled from governed
+    definitions. Both go through the result-layer cache."""
     name = NodeName.EXECUTE
 
     def run(self, state: TurnState) -> NodeOutput:
         started = time.perf_counter()
         options = state.get("options", {})
         mode = QueryMode.RAW if options.get("force_raw") else QueryMode.AUTO
-        outcome = self.deps.query_service.execute(QueryIR.model_validate(state["ir"]), mode, use_cache=not options.get("bypass_cache"))
-        query = {"sql": outcome.compiled.sql, "sources": outcome.compiled.sources,
-                 "period": f"{outcome.compiled.period.start} to {outcome.compiled.period.last_day}",
-                 "columns": outcome.result.columns, "rows": outcome.result.rows,
-                 "elapsed_ms": round(outcome.result.elapsed_ms, 1), "cache": outcome.cache.value}
-        engine = self.deps.query_service.engine.name
+        use_cache = not options.get("bypass_cache")
+        svc = self.deps.query_service
+        if state.get("sql"):
+            prepared = svc.prepare_sql(state["sql"], mode)
+            outcome = svc.execute_sql(prepared, use_cache)
+            intent = prepared.intent
+            query = {"sql": prepared.physical_sql, "sources": prepared.sources, "period": _period(intent.period),
+                     "column_metrics": intent.column_metrics, "date_columns": intent.date_columns}
+            compile_step = self.step(f"sources={prepared.sources} mode={mode.value}", name="compile")
+        else:
+            ir = QueryIR.model_validate(state["ir"])
+            outcome = svc.execute(ir, mode, use_cache=use_cache)
+            query = {"sql": outcome.compiled.sql, "sources": outcome.compiled.sources, "period": _period(outcome.compiled.period),
+                     "column_metrics": {m: m for m in ir.metrics}, "date_columns": ["date"] if ir.grain != TimeGrain.NONE else []}
+            compile_step = self.step(f"sources={outcome.compiled.sources} mode={mode.value}", name="compile")
+        result = outcome.result
+        query |= {"columns": result.columns, "rows": result.rows, "elapsed_ms": round(result.elapsed_ms, 1), "cache": outcome.cache.value,
+                  "bytes_processed": result.stats.get("bytes_processed")}
         return NodeOutput({"query": query}, [
-            self.step(f"sources={outcome.compiled.sources} mode={mode.value}", name="compile"),
-            self.step(f"{len(outcome.result.rows)} rows on {engine}", started, name="execute", cache=outcome.cache)])
+            compile_step, self.step(f"{len(result.rows)} rows on {svc.engine.name}", started, name="execute", cache=outcome.cache)])
+
+
+def _period(period: Period | None) -> str | None:
+    return f"{period.start} to {period.last_day}" if period else None
 
 
 def after_execute(state: TurnState) -> str:

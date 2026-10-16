@@ -6,6 +6,7 @@ description: Daily site visits and orders per marketplace and location. Visits a
 raw: agg_traffic_city_daily
 rollup: agg_traffic_state_daily
 time_column: visit_date
+measures: [visits, orders]
 rollup_dimensions:
 - marketplace
 - zone

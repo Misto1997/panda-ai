@@ -13,6 +13,21 @@ class QueryResult:
     stats: dict = field(default_factory=dict)  # engine-specific (e.g. bytes scanned on BigQuery)
 
 
+@dataclass
+class DryRunInfo:
+    """Outcome of validating a statement without running it (DuckDB: EXPLAIN; BigQuery: dry-run job)."""
+    ok: bool
+    error: str | None = None            # engine message when not ok (fed back to the SQL repair prompt)
+    bytes_processed: int | None = None  # estimated scan size when the engine reports one
+
+
+@runtime_checkable
+class SupportsDryRun(Protocol):
+    """Optional capability. Callers use `isinstance(engine, SupportsDryRun)`; engines without it are simply executed."""
+
+    def dry_run(self, sql: str) -> DryRunInfo: ...
+
+
 @runtime_checkable
 class QueryEngine(Protocol):
     """Port implemented by every analytics backend. The compiler emits DuckDB SQL; engines with another

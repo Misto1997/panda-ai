@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+import sqlglot
+from sqlglot import exp
+
 from app.core.errors import CatalogError, QueryValidationError
-from app.semantic.models import (CheckSpec, DimensionSpec, Doc, MetricSpec, PolicySpec, RcaTreeSpec, TableSpec)
+from app.semantic.models import (CheckSpec, DimensionSpec, Doc, ExampleSpec, MetricSpec, PolicySpec, RcaTreeSpec, TableSpec)
+from app.semantic.models import LOGICAL_DIALECT
 
 
 @dataclass
@@ -14,6 +18,7 @@ class Catalog:
     trees: dict[str, RcaTreeSpec] = field(default_factory=dict)
     checks: dict[str, CheckSpec] = field(default_factory=dict)
     policies: dict[str, PolicySpec] = field(default_factory=dict)
+    examples: dict[str, ExampleSpec] = field(default_factory=dict)
     docs: list[Doc] = field(default_factory=list)
 
     def metric(self, metric_id: str) -> MetricSpec:
@@ -40,6 +45,15 @@ class Catalog:
     def physical_tables(self) -> set[str]:
         return {name for t in self.tables.values() for name in (t.raw, t.rollup)}
 
+    def _example_errors(self, ex: ExampleSpec) -> list[str]:
+        try:
+            tree = sqlglot.parse_one(ex.sql, dialect=LOGICAL_DIALECT)
+        except sqlglot.errors.ParseError as e:
+            return [f"example {ex.id}: unparseable sql ({e})"]
+        ctes = {c.alias for c in tree.find_all(exp.CTE)}
+        unknown = {t.name for t in tree.find_all(exp.Table)} - ctes - set(self.tables)
+        return [f"example {ex.id}: unknown table(s) {sorted(unknown)}"] if unknown else []
+
     def validate_references(self) -> None:
         """Cross-file integrity: every id a file points to must exist."""
         errs: list[str] = []
@@ -60,6 +74,11 @@ class Catalog:
             errs += [f"tree {tree.id}: unknown dimension {d}" for d in [*tree.drill_dimensions, *tree.marginal_dimensions] if d not in self.dimensions]
             if tree.policy not in self.policies:
                 errs.append(f"tree {tree.id}: unknown policy {tree.policy}")
+        for ex in self.examples.values():
+            errs += self._example_errors(ex)
+        for t in self.tables.values():
+            if not t.measures:
+                errs.append(f"table {t.id}: declare `measures` (additive columns of the logical table)")
         for c in self.checks.values():
             if c.metric and c.metric not in self.metrics:
                 errs.append(f"check {c.id}: unknown metric {c.metric}")

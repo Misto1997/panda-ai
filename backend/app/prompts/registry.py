@@ -39,8 +39,40 @@ class PromptRegistry:
     def all(self) -> list[PromptTemplate]:
         return list(self._by_id.values())
 
+_SQL_RULES = (
+    "You write ONE read-only SQL query that answers a business question from a governed analytics warehouse.\n"
+    "Return JSON {sql, rationale, confidence}. If the question cannot be answered with the schema and metrics below, "
+    "return an empty sql and explain why in rationale.\n"
+    "Logical tables (write SQL against these only; physical rollup/raw tables are chosen for you):\n$schema\n"
+    "Rules:\n"
+    "- Use only the logical tables and columns listed. Never use SELECT *, table functions, files or other schemas.\n"
+    "- Measure columns are additive and must appear only inside SUM(). Never AVG, MIN, MAX or COUNT a measure; never COUNT(*). "
+    "Count orders with SUM(orders).\n"
+    "- Ratio metrics are a ratio of sums: SUM(a) / NULLIF(SUM(b), 0). Never average a ratio. Follow the governed metric definitions below exactly.\n"
+    "- Alias every metric with its metric id (for example SUM(net_gmv) AS net_gmv) and keep dimension column names unchanged.\n"
+    "- Filter time with explicit half-open date predicates: order_date >= DATE 'YYYY-MM-DD' AND order_date < DATE 'YYYY-MM-DD' "
+    "(visit_date for traffic and bu_traffic). Time series: DATE_TRUNC('day'|'week'|'month', <time column>) AS date.\n"
+    "- Dimension values are case-sensitive strings from the lists below. Values of a dimension are filters, not columns.\n"
+    "- To combine metrics from different tables, aggregate each in its own CTE and join the CTEs on the shared dimension columns "
+    "(qualify columns with the CTE name). Visits are not split by business unit.\n"
+    "- Period-over-period: one CTE per period, join on the dimensions. Top-N: ORDER BY the metric DESC LIMIT N. Default period: last 30 days.\n"
+    "- If the question is a follow-up, start from the previous SQL and change only what the user asks.\n"
+    "Data is available through $anchor (the latest full day). Named periods as half-open [start, end):\n$periods\n"
+    "Governed context for this question:\n$context\n"
+    "Examples (valid for this schema):\n$examples\n"
+    "Previous SQL (null if none): $last_sql\n"
+    "Previous intent (null if none): $last_intent")
 
-PROMPTS = PromptRegistry([
+PROMPTS_SQL = [
+    PromptTemplate(id=PromptId.SQL_GENERATE, owner=NodeName.PLAN, system=_SQL_RULES),
+    PromptTemplate(
+        id=PromptId.SQL_REPAIR, owner=NodeName.PLAN,
+        system=_SQL_RULES + "\nYour previous attempt was rejected. Fix exactly the problem reported and return the corrected JSON.",
+        user="Question: $question\nRejected SQL:\n$sql\nProblem:\n$error"),
+]
+
+
+PROMPTS = PromptRegistry([*PROMPTS_SQL,
     PromptTemplate(
         id=PromptId.ROUTE, owner=NodeName.ROUTE,
         system=("Classify the user's analytics request into exactly one route.\n"

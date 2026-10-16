@@ -1,8 +1,10 @@
-# PANDA: Prompt-driven Analytics & Natural Data Access
+# PANDA AI
 
-Ask your data in plain English. PANDA answers from **governed metrics** (the LLM never writes free-form SQL), explains **why** a metric moved with a root-cause runbook, and stays fast on large tables through rollups and a semantic cache.
+**PANDA** = Prompt-driven Analytics & Natural Data Access
 
-Built for the Google AI Builder Cup, theme **Future of Work & Enterprise Productivity**: analysts spend days answering "what happened and why"; PANDA does it in seconds, with numbers a finance team can trust.
+Ask your data in plain English. PANDA AI writes **guarded SQL over a governed semantic layer** (validated, rewritten to rollups, dry-run, repaired), explains **why** a metric moved with a root-cause runbook, and stays fast on large tables through rollups and an intent-keyed semantic cache.
+
+Built for the Google AI Builder Cup, theme **Future of Work & Enterprise Productivity**: analysts spend days answering "what happened and why"; PANDA AI does it in seconds, with numbers a finance team can trust.
 
 > All code, data and semantic files are original and synthetic ("Acme Retail"). Nothing derives from any employer system.
 
@@ -10,10 +12,10 @@ Built for the Google AI Builder Cup, theme **Future of Work & Enterprise Product
 
 | Capability | How |
 |---|---|
-| **Ask** ("Net GMV by zone last 7 days") | LLM extracts a structured intent (`QueryIR`) from retrieved semantic context; code compiles SQL from governed definitions; a guard validates it; the engine runs it |
+| **Ask** ("Net GMV by zone last 7 days") | Hybrid retrieval of governed metrics, dimensions, glossary and example SQL; Gemini writes SQL over logical tables; AST guard + engine dry-run + bounded repair; a rewriter picks rollup or raw tables; if generation fails, a deterministic IR compiler answers |
 | **Investigate** ("Why did visits drop?") | Runbook-driven RCA: exact decomposition, segment drill-down (zone, region, state, city), 4-5 hypothesis tests per runbook, preflight data checks. The LLM only narrates computed facts |
 | **Learn** ("What is BU visits?") | Hybrid retrieval over metrics, dimensions, glossary and runbooks |
-| **Be fast** | Daily rollups when possible, raw tables otherwise; two-layer semantic cache (question to intent, resolved intent to result) |
+| **Be fast** | Daily rollups when possible, raw tables otherwise; two-layer semantic cache (question to SQL, canonical intent derived from the SQL to result) |
 | **Follow-ups** | Per-thread memory: "and by marketplace?" modifies the previous intent |
 
 ## The demo domain
@@ -30,15 +32,14 @@ Built for the Google AI Builder Cup, theme **Future of Work & Enterprise Product
 ## Architecture
 
 ```
-Next.js UI + BFF --SSE--> FastAPI gateway --> LangGraph workflow --> Gemini (or offline mock)
-                                               route -> plan -> execute -> respond | rca | discover | help
-                          hybrid search (BM25/FTS + vectors, RRF) over semantic/
-                          QueryIR -> compiler -> guard -> cache -> engine (DuckDB | BigQuery*)
-                          RcaInvestigator (decomposition, drill, hypotheses, checks)
+Next.js UI + BFF --AG-UI events (SSE), A2UI answer surface, Vega-Lite--> FastAPI gateway --> LangGraph workflow --> Gemini (Agent Platform) | offline mock
+   route -> plan (retrieve -> text-to-SQL -> guard -> dry-run -> repair | IR fallback) -> execute -> respond  |  rca | discover | help
+   hybrid search (BM25/FTS + vectors, RRF) over semantic/  |  rewriter: logical -> rollup/raw  |  cache (plan, result)  |  RcaInvestigator
+   engines: DuckDB (local/tests) | BigQuery (hosted)        state: AlloyDB/Postgres (pgvector, checkpoints, cache, quotas)
+Hosting: Cloud Run (web, api, jobs) | Firebase Auth | Secret Manager | Vertex Gemini (location=global)
 ```
-\* BigQuery, Cloud Run, Vertex AI, Google login: phase 2.
 
-Full diagrams, class roles, retrieval, RCA maths, SSE and scale notes: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**. UI stack, BFF and file-by-file guide: **[docs/FRONTEND_GUIDE.md](docs/FRONTEND_GUIDE.md)**.
+Full diagrams, class roles, retrieval, RCA maths, SSE and scale notes: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**. UI stack, BFF, AG-UI and A2UI: **[docs/FRONTEND_GUIDE.md](docs/FRONTEND_GUIDE.md)**. Deploying to Google Cloud: **[docs/GCP_SETUP.md](docs/GCP_SETUP.md)**. Decisions, positioning, costs: **[docs/PHASE2_PLAN.md](docs/PHASE2_PLAN.md)**.
 
 ## Quick start
 
@@ -49,7 +50,8 @@ make setup     # venv + npm install
 make data      # 20M synthetic orders into backend/data/panda.duckdb (~20 s)
 make api       # gateway on http://localhost:8000
 make web       # UI on http://localhost:3000   (second terminal)
-make test      # backend tests
+make test      # backend tests (79)
+make bench     # golden questions through the full graph
 ```
 
 Speed demo: tick **Force raw table scan** (skip the rollup) or **Bypass semantic cache** and compare the query-time chips; repeat a question without bypassing to see a cache hit.
@@ -79,7 +81,8 @@ Copy `.env.example` to `.env`.
 
 ## API
 
-- `POST /api/chat` `{question, thread_id?, force_raw?, bypass_cache?}` returns an SSE stream: `run_started`, `step`*, `result`, `run_finished` (or `error`).
+- `POST /api/chat` `{question, thread_id?, force_raw?, bypass_cache?}` returns an **AG-UI** event stream over SSE (`RUN_STARTED`, `STEP_*`, `TEXT_MESSAGE_*`, `ACTIVITY_SNAPSHOT` with an A2UI surface, `CUSTOM panda.result`, `RUN_FINISHED` or `RUN_ERROR`). In `AUTH_MODE=firebase` send `Authorization: Bearer <Firebase ID token>`; 401/429 return JSON errors.
+- `GET /api/me` (user and remaining daily quota), `GET /api/a2ui/catalog`.
 - `GET /api/meta` runtime info, metrics, suggestions, cache stats. `GET /health`, `GET /ready`.
 - `POST /api/admin/cache/clear`, `GET /api/admin/cache/stats`.
 
@@ -102,14 +105,16 @@ AGENTS.md      Orientation and rules for coding agents and new contributors
 
 | Area | State |
 |---|---|
-| Semantic layer, compiler, guard, cache, RCA (4 runbooks), workflow, gateway, UI | done, tested (`make test`, 33 tests) |
-| Mock LLM end to end | verified |
-| Gemini with real credentials | written, **not yet run** |
-| Postgres / pgvector / Postgres checkpointer | written, **not yet run** |
-| Load behaviour of the SSE gateway | **not load tested** |
-| BigQuery engine, Cloud Run deploy, Google login and row-level scope, Gemma router, benchmark, deck, demo video | phase 2 and 3 |
+| Semantic layer (13 metrics, 6 dimensions, glossary, 20 SQL examples, 4 RCA runbooks) | done |
+| Text-to-SQL path, guard, rewriter, dry-run, repair, IR fallback, cache, RCA | done, tested offline (`make test`, 79 tests) |
+| AG-UI stream, A2UI answer surface, Firebase sign-in UI, PANDA AI branding | done; sign-in not run end to end |
+| BigQuery engine, bootstrap job, Dockerfiles, deploy scripts, budget kill-switch | written, **not yet run on GCP** |
+| Gemini via Agent Platform | written, **not yet run** (model ids unverified) |
+| AlloyDB/Postgres (pgvector, checkpointer, cache store, quotas) | written, **not yet run** |
+| Golden benchmark | harness verified on the mock; real accuracy pending a Gemini run |
+| Load behaviour | **not load tested** |
 
-Known gaps: no authentication on the gateway; cache and checkpointer are in-process unless `DATABASE_URL` is set; BigQuery date-truncation transpile needs care.
+Known gaps: see "Unverified" in [AGENTS.md](AGENTS.md).
 
 ## License
 

@@ -1,4 +1,4 @@
-"""Wires the nodes into the LangGraph workflow:  route -> plan -> execute -> respond | rca | discover | help"""
+"""Wires the nodes into the LangGraph workflow:  route -> plan (retrieve, generate SQL, guard, dry-run, repair | IR fallback) -> execute -> respond | rca | discover | help"""
 from __future__ import annotations
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -9,14 +9,14 @@ from app.agents.deps import NodeDependencies
 from app.agents.nodes.discovery import DiscoveryNode
 from app.agents.nodes.executor import ExecutorNode, after_execute
 from app.agents.nodes.help import HelpNode
-from app.agents.nodes.planner import PlannerNode
+from app.agents.nodes.planner import SqlPlannerNode
 from app.agents.nodes.rca import RcaNode
 from app.agents.nodes.responder import ResponderNode
 from app.agents.nodes.router import RouterNode, after_route
 from app.agents.state import TurnState
 from app.core.enums import NodeName
 
-NODE_CLASSES: list[type[AgentNode]] = [RouterNode, PlannerNode, ExecutorNode, ResponderNode, RcaNode, DiscoveryNode, HelpNode]
+NODE_CLASSES: list[type[AgentNode]] = [RouterNode, SqlPlannerNode, ExecutorNode, ResponderNode, RcaNode, DiscoveryNode, HelpNode]
 
 
 def build_graph(deps: NodeDependencies, checkpointer: BaseCheckpointSaver):

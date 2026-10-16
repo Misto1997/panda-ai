@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Protocol, TypeVar
+from typing import Any, Callable, Protocol, TypeVar
 
 from pydantic import BaseModel
 
@@ -37,6 +37,7 @@ class LlmContext:
     last_intent: dict | None = None
     task: LlmTask | None = None
     payload: dict[str, Any] = field(default_factory=dict)
+    render_sql: Callable[[dict], str] | None = None  # QueryIR dict -> logical SQL; lets the mock emit SQL like a real model would
 
 
 class LlmClient(Protocol):

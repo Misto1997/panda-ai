@@ -1,0 +1,29 @@
+# Run from the repo root:  gcloud builds submit --config deploy/cloudbuild-web.yaml --substitutions=_IMAGE=...,_TAG=...,_FB_API_KEY=...
+# The _FB_* values are PUBLIC Firebase web config (they ship in the browser bundle), not secrets.
+substitutions:
+  _IMAGE: asia-southeast1-docker.pkg.dev/ai-builder-hackathon/panda/panda-web
+  _TAG: latest
+  _FB_API_KEY: ""
+  _FB_AUTH_DOMAIN: ""
+  _FB_PROJECT_ID: ""
+  _FB_APP_ID: ""
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - frontend/Dockerfile
+      - --build-arg=NEXT_PUBLIC_FIREBASE_API_KEY=${_FB_API_KEY}
+      - --build-arg=NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${_FB_AUTH_DOMAIN}
+      - --build-arg=NEXT_PUBLIC_FIREBASE_PROJECT_ID=${_FB_PROJECT_ID}
+      - --build-arg=NEXT_PUBLIC_FIREBASE_APP_ID=${_FB_APP_ID}
+      - -t
+      - ${_IMAGE}:${_TAG}
+      - -t
+      - ${_IMAGE}:latest
+      - frontend
+images:
+  - "${_IMAGE}:${_TAG}"
+  - "${_IMAGE}:latest"
+options:
+  logging: CLOUD_LOGGING_ONLY
