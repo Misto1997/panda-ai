@@ -22,10 +22,10 @@ from pathlib import Path
 import yaml
 
 from app.container import Container, build_container
-from app.core.config import ROOT, get_settings
+from app.core.config import get_settings
 from app.core.enums import LlmProvider, ResponseType
 
-GOLDEN = ROOT / "backend" / "tests" / "golden" / "golden.yaml"
+GOLDEN = Path(__file__).parent / "golden" / "golden.yaml"  # inside the package so the deployed image carries it
 REL_TOL, ABS_TOL = 1e-6, 1e-9
 SORT_DIGITS = 4  # significant digits used only to order rows before comparing with the real tolerance
 
