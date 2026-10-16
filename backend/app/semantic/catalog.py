@@ -35,6 +35,23 @@ class Catalog:
                 return m
         return None
 
+    def metrics_in(self, text: str) -> list[MetricSpec]:
+        """Metrics named in free text (id, title or alias), in order of appearance; the longest name wins an overlap ('net gmv' over 'gmv')."""
+        import re
+
+        q, spans = text.lower(), []
+        names = sorted(((n.lower().replace("_", " "), m) for m in self.metrics.values() for n in (m.id, m.title, *m.aliases)),
+                       key=lambda nm: -len(nm[0]))
+        for name, metric in names:
+            for hit in re.finditer(rf"\b{re.escape(name)}s?\b", q):
+                if not any(hit.start() < b and a < hit.end() for a, b, _ in spans):
+                    spans.append((hit.start(), hit.end(), metric))
+        seen: list[MetricSpec] = []
+        for _, _, metric in sorted(spans, key=lambda s: s[0]):
+            if metric not in seen:
+                seen.append(metric)
+        return seen
+
     def dimension(self, dim_id: str) -> DimensionSpec:
         try:
             return self.dimensions[dim_id]

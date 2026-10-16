@@ -3,6 +3,7 @@ runbooks in semantic/rca/trees reference them by name and carry the thresholds."
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from app.core.enums import HypothesisStatus, HypothesisTest, Movement, Scope
@@ -121,11 +122,14 @@ class MixShiftTester(HypothesisTester):
 TESTERS: dict[HypothesisTest, HypothesisTester] = {t.test: t for t in (MetricShiftTester(), DivergenceTester(), ConcentrationTester(), MixShiftTester())}
 
 
-def run_hypotheses(specs: list[HypothesisSpec], ctx: HypothesisContext) -> list[HypothesisOutcome]:
-    out = []
-    for spec in specs:
+def run_hypotheses(specs: list[HypothesisSpec], ctx: HypothesisContext, pool: ThreadPoolExecutor | None = None) -> list[HypothesisOutcome]:
+    """Tests are independent, so they run concurrently when a pool is given; results keep the runbook order."""
+    def run_one(spec: HypothesisSpec) -> HypothesisOutcome:
         tester = TESTERS.get(spec.test)
         if tester is None:
             raise CatalogError(f"no tester registered for {spec.test}")
-        out.append(tester.run(spec, ctx))
-    return out
+        return tester.run(spec, ctx)
+
+    if pool is None:
+        return [run_one(s) for s in specs]
+    return [f.result() for f in [pool.submit(run_one, s) for s in specs]]

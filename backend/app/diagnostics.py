@@ -28,6 +28,8 @@ class Diagnostics:
         checks: list[Callable[[], CheckResult]] = [self._config, self._warehouse, self._llm_ping if ping_llm else self._llm_info]
         if self._c.pool is not None:
             checks += [self._database, self._extensions, self._tables, self._semantic_index, self._cache_table]
+            if self._c.settings.history_store == StoreKind.POSTGRES:
+                checks.append(self._history)
             if self._c.settings.checkpointer == StoreKind.POSTGRES:
                 checks.append(self._checkpoints)
         results = [self._guard(check) for check in checks]
@@ -49,7 +51,7 @@ class Diagnostics:
     def _config(self) -> CheckResult:
         s = self._c.settings
         detail = (f"profile={s.profile} env={s.app_env.value} llm={s.llm_provider.value} engine={s.engine.value} search={s.search_backend.value} "
-                  f"checkpointer={s.checkpointer.value} cache={s.cache_store.value} quota={s.quota_store.value} auth={s.auth_mode.value}")
+                  f"checkpointer={s.checkpointer.value} cache={s.cache_store.value} quota={s.quota_store.value} history={s.history_store.value} auth={s.auth_mode.value}")
         return CheckResult("config", True, detail)
 
     def _warehouse(self) -> CheckResult:
@@ -91,6 +93,8 @@ class Diagnostics:
             wanted.append("panda_cache")
         if s.quota_store == StoreKind.POSTGRES:
             wanted.append("panda_usage")
+        if s.history_store == StoreKind.POSTGRES:
+            wanted += ["panda_threads", "panda_turns"]
         missing = [t for t in wanted if t not in have]
         return CheckResult("tables", not missing, f"present={sorted(have & set(wanted))} missing={missing}",
                            "semantic_docs is created by `STEP=index`; the others are created on first use" if missing else "")
@@ -115,6 +119,14 @@ class Diagnostics:
         except Exception as e:
             return CheckResult("cache", True, f"panda_cache not created yet ({type(e).__name__})")
         return CheckResult("cache", True, f"entries={dict(rows)}")
+
+    def _history(self) -> CheckResult:
+        try:
+            threads = self._query("SELECT count(*) FROM panda_threads")[0][0]
+            turns = self._query("SELECT count(*) FROM panda_turns")[0][0]
+        except Exception as e:
+            return CheckResult("history", True, f"history tables not created yet ({type(e).__name__})")
+        return CheckResult("history", True, f"threads={threads} turns={turns}")
 
     def _checkpoints(self) -> CheckResult:
         """Conversation-state footprint: how big the LangGraph tables are and how many threads they hold."""

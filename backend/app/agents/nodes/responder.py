@@ -4,9 +4,7 @@ import time
 
 from app.agents.base import AgentNode, NodeOutput
 from app.agents.state import TurnState
-from app.core.enums import CacheStatus, LlmTask, NodeName, PromptId, ResponseType, ValueFormat
-from app.core.errors import LlmError
-from app.llm.base import LlmContext
+from app.core.enums import CacheStatus, NodeName, ResponseType, ValueFormat
 from app.presentation.narrative import answer_summary
 from app.schemas.chat import ChatResult, ResultMeta, TablePayload
 
@@ -23,7 +21,7 @@ class ResponderNode(AgentNode):
         query = state["query"]
         formats, titles = self._describe_columns(query)
         facts = {"columns": query["columns"], "rows": query["rows"], "formats": formats, "titles": titles}
-        text = self._narrate(state["question"], facts)
+        text = answer_summary(**facts)  # instant and always correct; NarrateNode upgrades it when the model answers in time
         chart_columns = self._chart_columns(query)
         result = ChatResult(
             type=ResponseType.ANSWER, text=text, sql=query["sql"],
@@ -64,12 +62,3 @@ class ResponderNode(AgentNode):
             names.append(col if name in used else name)
             used.add(name)
         return names
-
-    def _narrate(self, question: str, facts: dict) -> str:
-        prompt = self.deps.prompts.render(PromptId.ANSWER, question=question, columns=facts["columns"], rows=facts["rows"][:LLM_ROWS],
-                                           formats=facts["formats"])
-        try:
-            return self.deps.llm.text(prompt, context=LlmContext(question=question, task=LlmTask.ANSWER, payload=facts))
-        except LlmError as e:  # degrade gracefully: the data is still correct without the prose
-            self.log.warning("narration failed, using deterministic summary: %s", e)
-            return answer_summary(**facts)

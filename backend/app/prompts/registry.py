@@ -52,6 +52,8 @@ _SQL_RULES = (
     "- Alias every metric with its metric id (for example SUM(net_gmv) AS net_gmv) and keep dimension column names unchanged.\n"
     "- Filter time with explicit half-open date predicates: order_date >= DATE 'YYYY-MM-DD' AND order_date < DATE 'YYYY-MM-DD' "
     "(visit_date for traffic and bu_traffic). Time series: DATE_TRUNC('day'|'week'|'month', <time column>) AS date.\n"
+    "- Never invent or remember dates. Use ONLY the dates in the named-period list below, or last N days = [$anchor + 1 day - N days, $anchor + 1 day), or dates the user typed. "
+    "'Yesterday' and 'latest day' mean $anchor. Never use CURRENT_DATE or any clock function.\n"
     "- Dimension values are case-sensitive strings from the lists below. Values of a dimension are filters, not columns.\n"
     "- To combine metrics from different tables, aggregate each in its own CTE and join the CTEs on the shared dimension columns "
     "(qualify columns with the CTE name). Visits are not split by business unit.\n"

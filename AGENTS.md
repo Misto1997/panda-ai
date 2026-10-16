@@ -31,7 +31,7 @@ backend/app/
   schemas/                chat.py (ChatResult...), agui.py (AG-UI events)
   presentation/           chart.py, formatting.py, narrative.py, a2ui.py + a2ui_catalog.json
   api/                    controllers/{chat,meta,admin,health,me,a2ui}.py, streaming.py (ChatStreamService), sse.py (AgUiEncoder), middleware.py, errors.py
-  bootstrap/              datagen.py, bq_load.py, __main__.py (`python -m app.bootstrap data|index|warm`)
+  bootstrap/              datagen.py, bq_load.py, prune.py, __main__.py (`python -m app.bootstrap data|index|warm|diagnose|refresh|prune`)
 deploy/                   gcloud scripts (setup, build, deploy, bootstrap job, budget, kill-switch, smoke); env.example.sh -> env.sh (gitignored)
 frontend/                 Next.js 15 UI + BFF: AG-UI client (lib/sse.ts), A2UI renderer (components/a2ui), Firebase auth (components/AuthProvider.tsx)
 ```
@@ -45,6 +45,9 @@ make setup        # venv + npm install
 make data         # 20M-order DuckDB at backend/data/panda.duckdb; ARGS="--rows 2000000" for smaller
 make api          # gateway :8000 (reload)     make api-debug   # DEBUG logs + SQL + model payloads
 make web          # UI :3000                    make typecheck   # tsc --noEmit
+make probe API=... WEB=... ID_TOKEN=...   # latency/UX probe of a running instance (needs `pip3 install httpx`)
+make gcp-refresh CMD=create|pause|extend|delete   # nightly data roll-forward with a stop date
+make gcp-hosting HOSTING_SITE=panda-ai            # free <site>.web.app address
 make doctor | gcp-diagnose   # dependency self-check (local | inside the VPC as a Cloud Run Job)
 make test         # backend pytest           make bench   # golden questions through the full graph (LLM_PROVIDER=gemini to grade a real model)
 make gcp-setup | gcp-build | gcp-deploy | gcp-bootstrap | gcp-budget | gcp-smoke   # see docs/GCP_SETUP.md (run where gcloud is logged in)
@@ -83,10 +86,17 @@ Profiles in `config/profiles/*.yaml` (`PANDA_PROFILE`, default `local`; `prod` i
 
 ## Status and known gaps (updated)
 
-Done and tested offline (mock LLM, DuckDB; 79 tests): text-to-SQL path with guard, rewriter, dry-run, repair loop, IR fallback, SQL->IR cache keys; RCA; AG-UI + A2UI UI; auth and quota code; BigQuery SQL translation; golden benchmark harness; Dockerfiles and deploy scripts.
+Done and tested offline (mock LLM, DuckDB; 136 tests): text-to-SQL path with guard, rewriter, dry-run, repair loop, IR fallback, SQL->IR cache keys; RCA; AG-UI + A2UI UI; auth and quota code; BigQuery SQL translation; golden benchmark harness; Dockerfiles and deploy scripts.
 **Unverified (needs real GCP):** Gemini/Agent Platform calls and model ids (`gemini-3.8-flash` default), BigQuery load and queries, AlloyDB/Postgres (pool, pgvector DDL, cache store, quota tables), Firebase sign-in end to end, Direct VPC egress, both Docker builds, every gcloud flag marked unverified in `deploy/` and `docs/GCP_SETUP.md`. The golden benchmark on the mock only validates the harness; real accuracy comes from `LLM_PROVIDER=gemini make bench`.
 Target hosting: Cloud Run (web, api, jobs) + AlloyDB (Postgres + pgvector; Cloud SQL works by changing `DATABASE_URL`) + BigQuery + Vertex Gemini (`location=global`) + Firebase Auth only. Nothing runs on a laptop in production.
 
 ## Dev environment notes
 
 - `.claude/launch.json` (gitignored) holds preview configs with absolute paths. Ports 8000 and 3000 are often already taken by the user's own `make api` / `make web`; check `lsof -nP -iTCP:8000 -sTCP:LISTEN` and reuse them rather than killing them.
+
+## Latency design (read before changing the turn flow)
+- Q&A uses ONE model call (write SQL) plus an optional narration call that runs after the data is already streamed; routing is rule-based (model only if ambiguous); RCA needs no model call before the investigation and runs its warehouse reads concurrently (memoised `SegmentReader`).
+- The stream sends the result twice on purpose: first a standard summary with the data, later the same result with `meta.narrated=true` and model text (the UI replaces the first; TEXT_MESSAGE_START resets text). `NarrateNode` must never replace a good response with an error.
+- Model calls are bounded: `llm_timeout_s` 25, `llm_max_retries` 1, `llm_max_concurrency` 6 per instance, narration 12 s without retries. Provider error text goes to logs and `details`, never to the user.
+- Dates come from the deterministic `extract_time_expr` plus the planner's period guard (SQL must cover the period named in the question); plan-cache keys carry the data anchor date.
+- Dataset freshness: nightly roll-forward job (`deploy/45-nightly-refresh.sh`, stops after its `--until` date); `prune` removes idle conversation state.

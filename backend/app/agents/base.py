@@ -36,6 +36,7 @@ class AgentNode(ABC):
 
     def __call__(self, state: TurnState) -> dict:
         started = time.perf_counter()
+        self._announce()
         try:
             out = self.run(state)
         except PandaError as e:
@@ -44,6 +45,15 @@ class AgentNode(ABC):
             return self._fail(GENERIC_ERROR, started, e)
         self.log.debug("%s finished in %.1f ms", self.name.value, (time.perf_counter() - started) * 1000)
         return {**out.update, "trace": [s.model_dump(mode="json", exclude_none=True) for s in out.steps]}
+
+    def _announce(self) -> None:
+        """Tell the client this node has started, so slow nodes show live progress instead of silence. A no-op outside a streamed graph run."""
+        try:
+            from langgraph.config import get_stream_writer
+
+            get_stream_writer()({"event": "node_started", "node": self.name.value})
+        except Exception:  # unit tests and direct calls have no stream to write to
+            pass
 
     def _fail(self, message: str, started: float, error: Exception) -> dict:
         if isinstance(error, PandaError) and error.user_facing:

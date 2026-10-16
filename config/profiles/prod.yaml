@@ -18,6 +18,7 @@ search_backend: pgvector
 checkpointer: postgres
 cache_store: postgres
 quota_store: postgres
+history_store: postgres
 
 auth_mode: firebase
 firebase_project_id: ai-builder-hackathon
@@ -26,6 +27,7 @@ daily_global_query_limit: 300
 
 text_to_sql: true
 cache_enabled: true
+cache_ttl_s: 86400   # the demo dataset is static between refreshes; plan keys carry the data date, so entries never go stale
 log_level: INFO
 trace_payloads: false
 cors_origins: []   # the browser talks to the web service (same origin); only the BFF calls the API

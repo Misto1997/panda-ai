@@ -9,6 +9,7 @@ from app.agents.deps import NodeDependencies
 from app.agents.nodes.discovery import DiscoveryNode
 from app.agents.nodes.executor import ExecutorNode, after_execute
 from app.agents.nodes.help import HelpNode
+from app.agents.nodes.narrate import NarrateNode
 from app.agents.nodes.planner import SqlPlannerNode
 from app.agents.nodes.rca import RcaNode
 from app.agents.nodes.responder import ResponderNode
@@ -16,7 +17,7 @@ from app.agents.nodes.router import RouterNode, after_route
 from app.agents.state import TurnState
 from app.core.enums import NodeName
 
-NODE_CLASSES: list[type[AgentNode]] = [RouterNode, SqlPlannerNode, ExecutorNode, ResponderNode, RcaNode, DiscoveryNode, HelpNode]
+NODE_CLASSES: list[type[AgentNode]] = [RouterNode, SqlPlannerNode, ExecutorNode, ResponderNode, NarrateNode, RcaNode, DiscoveryNode, HelpNode]
 
 
 def build_graph(deps: NodeDependencies, checkpointer: BaseCheckpointSaver):
@@ -28,6 +29,8 @@ def build_graph(deps: NodeDependencies, checkpointer: BaseCheckpointSaver):
                                 [NodeName.PLAN.value, NodeName.RCA.value, NodeName.DISCOVER.value, NodeName.HELP.value, END])
     graph.add_conditional_edges(NodeName.PLAN.value, lambda s: END if s.get("response") else NodeName.EXECUTE.value, [NodeName.EXECUTE.value, END])
     graph.add_conditional_edges(NodeName.EXECUTE.value, after_execute, [NodeName.RESPOND.value, END])
-    for terminal in (NodeName.RESPOND, NodeName.RCA, NodeName.DISCOVER, NodeName.HELP):
+    graph.add_edge(NodeName.RESPOND.value, NodeName.NARRATE.value)  # data first, optional prose after
+    graph.add_edge(NodeName.RCA.value, NodeName.NARRATE.value)
+    for terminal in (NodeName.NARRATE, NodeName.DISCOVER, NodeName.HELP):
         graph.add_edge(terminal.value, END)
     return graph.compile(checkpointer=checkpointer)

@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     checkpointer: StoreKind = StoreKind.MEMORY
     cache_store: StoreKind = StoreKind.MEMORY
     quota_store: StoreKind = StoreKind.MEMORY
+    history_store: StoreKind = StoreKind.MEMORY
 
     # LLM
     llm_provider: LlmProvider = LlmProvider.MOCK
@@ -49,8 +50,12 @@ class Settings(BaseSettings):
     google_cloud_location: str = "global"
     embedding_location: str = ""                # empty = google_cloud_location; embedding models may need a regional endpoint
     embedding_dim: int = 768
-    llm_timeout_s: float = 45.0
-    llm_max_retries: int = 2
+    llm_timeout_s: float = 25.0      # a call that has not answered in 25 s is stalled (quota wait, capacity): fail over instead of hanging
+    llm_max_retries: int = 1
+    narration_timeout_s: float = 12.0  # optional narration after the answer is shown
+    narrate_enabled: bool = True
+    llm_max_concurrency: int = 6       # simultaneous model calls per instance; extra calls wait instead of bursting into the provider's limits
+    enforce_time_guard: bool = True    # reject SQL whose date range contradicts the period named in the question
 
     # Engine
     engine: EngineKind = EngineKind.DUCKDB
@@ -93,8 +98,8 @@ class Settings(BaseSettings):
     daily_user_query_limit: int = 30
     daily_global_query_limit: int = 300
     max_request_bytes: int = 16 * 1024
-    ip_rate_per_minute: int = 120               # per-IP token bucket refill; burst = ip_rate_burst
-    ip_rate_burst: int = 20
+    ip_rate_per_minute: int = 300               # per-IP token bucket refill; burst = ip_rate_burst
+    ip_rate_burst: int = 60
 
     # Observability. TRACE_PAYLOADS adds prompts, SQL and raw LLM output to DEBUG logs and step events.
     log_level: str = "INFO"
@@ -119,7 +124,7 @@ class Settings(BaseSettings):
 
     @property
     def uses_postgres(self) -> bool:
-        return StoreKind.POSTGRES in (self.checkpointer, self.cache_store, self.quota_store) or self.search_backend == SearchBackendKind.PGVECTOR
+        return StoreKind.POSTGRES in (self.checkpointer, self.cache_store, self.quota_store, self.history_store) or self.search_backend == SearchBackendKind.PGVECTOR
 
     @model_validator(mode="after")
     def _consistent(self) -> "Settings":
@@ -136,7 +141,7 @@ class Settings(BaseSettings):
             wanted = {"llm_provider": (self.llm_provider, LlmProvider.GEMINI), "google_genai_use_vertexai": (self.google_genai_use_vertexai, True),
                       "engine": (self.engine, EngineKind.BIGQUERY), "search_backend": (self.search_backend, SearchBackendKind.PGVECTOR),
                       "checkpointer": (self.checkpointer, StoreKind.POSTGRES), "cache_store": (self.cache_store, StoreKind.POSTGRES),
-                      "quota_store": (self.quota_store, StoreKind.POSTGRES), "auth_mode": (self.auth_mode, AuthMode.FIREBASE),
+                      "quota_store": (self.quota_store, StoreKind.POSTGRES), "history_store": (self.history_store, StoreKind.POSTGRES), "auth_mode": (self.auth_mode, AuthMode.FIREBASE),
                       "trace_payloads": (self.trace_payloads, False), "cache_enabled": (self.cache_enabled, True)}
             errs += [f"app_env=prod requires {k}={want}, got {got}" for k, (got, want) in wanted.items() if got != want]
         if errs:

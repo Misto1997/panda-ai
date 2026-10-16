@@ -19,6 +19,7 @@ class LogRatioDecomposer:
         if tree.decomposition is None:
             return []
         root = self._cat.metric(tree.root_metric)
+        self._reader.prefetch((self._cat.metric(m), [], p) for m in [tree.root_metric, *tree.decomposition.components] for p in (current, baseline))
         g1, g0 = self._reader.value(root, current), self._reader.value(root, baseline)
         if not g1 or not g0 or g1 <= 0 or g0 <= 0 or g1 == g0:
             return []  # logarithm undefined or no change: nothing to attribute

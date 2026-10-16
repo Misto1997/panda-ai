@@ -14,6 +14,7 @@ class NodeName(StrEnum):
     PLAN = "plan"
     EXECUTE = "execute"
     RESPOND = "respond"
+    NARRATE = "narrate"
     RCA = "rca"
     DISCOVER = "discover"
     HELP = "help"
@@ -136,6 +137,7 @@ class EmbeddingProvider(StrEnum):
 class ModelTier(StrEnum):
     FAST = "fast"            # routing, planning, short answers
     REASONING = "reasoning"  # RCA narrative
+    NARRATION = "narration"  # optional prose after the data is already on screen: short timeout, no retries
 
 
 class LlmTask(StrEnum):
@@ -231,6 +233,8 @@ class BootstrapStep(StrEnum):
     INDEX = "index"
     WARM = "warm"
     DIAGNOSE = "diagnose"
+    REFRESH = "refresh"
+    PRUNE = "prune"
 
 
 class CacheLayer(StrEnum):

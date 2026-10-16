@@ -2,6 +2,8 @@
 the LLM only narrates the resulting report."""
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 from app.core.enums import ValueFormat
 from app.core.logging import get_logger
 from app.query.service import QueryService
@@ -16,6 +18,8 @@ from app.semantic.models import PolicySpec, RcaTreeSpec
 
 log = get_logger("rca")
 SQL_SAMPLE = 3
+READ_WORKERS = 8   # concurrent warehouse queries per investigation
+PHASE_WORKERS = 3
 
 
 class RcaInvestigator:
@@ -28,20 +32,23 @@ class RcaInvestigator:
         policy = self._cat.policies[tree.policy] if tree else next(iter(self._cat.policies.values()))
         current = self._service.resolver.resolve(time_expr)
         baseline = current.previous()
-        reader = SegmentReader(self._service)
+        # Warehouse reads are 1-2 s round trips and mostly independent: fan them out (two pools, so a phase waiting on reads can never starve them).
+        with ThreadPoolExecutor(READ_WORKERS, thread_name_prefix="rca-read") as reads, ThreadPoolExecutor(PHASE_WORKERS, thread_name_prefix="rca-phase") as phases:
+            reader = SegmentReader(self._service, reads)
+            checks_f = phases.submit(run_checks, tree.preflight, CheckContext(self._cat, reader, self._service.engine, current, baseline)) if tree else None
+            decomp_f = phases.submit(LogRatioDecomposer(self._cat, reader).decompose, tree, current, baseline) if tree else None
+            now, before = reader.value(metric, current), reader.value(metric, baseline)
+            rel = relative_change(now, before)
+            decomposition = decomp_f.result() if decomp_f else []
 
-        now, before = reader.value(metric, current), reader.value(metric, baseline)
-        rel = relative_change(now, before)
-        checks = run_checks(tree.preflight, CheckContext(self._cat, reader, self._service.engine, current, baseline)) if tree else []
-        decomposition = LogRatioDecomposer(self._cat, reader).decompose(tree, current, baseline) if tree else []
-
-        driver = self._cat.metric(decomposition[0].component) if decomposition else metric
-        drill_dims = tree.drill_dimensions if tree else metric.dimensions[:2]
-        drill = SegmentDriller(self._cat, reader).drill(
-            driver, drill_dims, tree.marginal_dimensions if tree else [], current, baseline,
-            top_k=int(policy.value("top_k_drivers")), min_share=policy.value("min_segment_share"))
-        top = drill.cells[0] if drill.cells else None
-        hypotheses = run_hypotheses(tree.hypotheses, HypothesisContext(self._cat, reader, current, baseline, top)) if tree else []
+            driver = self._cat.metric(decomposition[0].component) if decomposition else metric
+            drill_dims = tree.drill_dimensions if tree else metric.dimensions[:2]
+            drill = SegmentDriller(self._cat, reader).drill(
+                driver, drill_dims, tree.marginal_dimensions if tree else [], current, baseline,
+                top_k=int(policy.value("top_k_drivers")), min_share=policy.value("min_segment_share"))
+            top = drill.cells[0] if drill.cells else None
+            hypotheses = run_hypotheses(tree.hypotheses, HypothesisContext(self._cat, reader, current, baseline, top), reads) if tree else []
+            checks = checks_f.result() if checks_f else []
 
         log.info("rca %s: rel=%s driver=%s top=%s queries=%d", metric_id, rel, driver.id, top.segment if top else None, len(reader.queries))
         return RcaReport(

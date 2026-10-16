@@ -33,6 +33,8 @@ class SegmentDriller:
     def drill(self, metric: MetricSpec, dims: list[str], marginal_dims: list[str], current: Period, baseline: Period,
               top_k: int, min_share: float) -> DrillReport:
         dims = [d for d in dims if d in metric.dimensions]
+        all_dims = list(dict.fromkeys([*dims, *(d for d in marginal_dims if d in metric.dimensions)]))
+        self._reader.prefetch((metric, ds, p) for ds in [dims, *([d] for d in all_dims)] for p in (current, baseline))
         now, before = self._reader.segments(metric, dims, current), self._reader.segments(metric, dims, baseline)
         contrib = contributions(now, before, metric.is_ratio)
         total = sum(contrib.values())

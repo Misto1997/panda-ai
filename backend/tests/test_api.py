@@ -37,7 +37,11 @@ def test_stream_contract_and_cache_layers(client):
     assert any(e["type"] == "CUSTOM" and e["name"] == "panda.step" and "node" in e["value"] for e in events)
     text = [e for e in events if e["type"].startswith("TEXT_MESSAGE")]
     assert [e["type"] for e in (text[0], text[-1])] == ["TEXT_MESSAGE_START", "TEXT_MESSAGE_END"]
-    assert "".join(e["delta"] for e in text if e["type"] == "TEXT_MESSAGE_CONTENT") == result["text"]
+    last = max(i for i, e in enumerate(text) if e["type"] == "TEXT_MESSAGE_START")  # data first, an upgraded message may follow it
+    assert "".join(e["delta"] for e in text[last:] if e["type"] == "TEXT_MESSAGE_CONTENT") == result["text"]
+    results = [e for e in events if e["type"] == "CUSTOM" and e["name"] == "panda.result"]
+    assert len(results) == 2 and results[-1]["value"]["meta"]["narrated"] is True and "narrated" not in results[0]["value"]["meta"]  # progressive answer
+    assert any(e["type"] == "CUSTOM" and e["name"] == "panda.step" and e["value"].get("status") == "running" for e in events)  # live progress
     surface = next(e for e in events if e["type"] == "ACTIVITY_SNAPSHOT")
     assert surface["activityType"] == "a2ui-surface" and "createSurface" in surface["content"][0]
     assert result["type"] == "answer" and result["meta"]["cache"] == "miss" and len(result["table"]["rows"]) == 4
@@ -86,3 +90,59 @@ def test_run_error_is_generic_and_typed(client, monkeypatch):
     r = client.post("/api/chat", json={"question": "anything"})
     err = json.loads(r.text.strip().split("\n\n")[-1][6:])
     assert err["type"] == "RUN_ERROR" and "secret" not in err["message"]
+
+
+# ---- chat history (memory store; the Postgres store is not covered here, it needs a real database) ----
+def test_history_store_caps_and_title():
+    from datetime import datetime, timedelta, timezone
+
+    from app.history.store import MAX_THREADS, MAX_TURNS, MemoryHistoryStore, make_title
+
+    now = [datetime(2026, 1, 1, tzinfo=timezone.utc)]
+    store = MemoryHistoryStore(clock=lambda: now[0])
+    assert len(make_title("x" * 200)) == 60
+    for i in range(MAX_TURNS + 5):
+        store.record("u", "t", f"q{i}", {"type": "answer", "text": str(i)})
+    assert [t["question"] for t in store.get_thread("u", "t")["turns"]][0] == "q5"
+    for i in range(MAX_THREADS + 3):
+        now[0] += timedelta(seconds=1)
+        store.record("u", f"th{i}", "q", {"type": "answer"})
+    assert len(store.list_threads("u")) == MAX_THREADS and store.get_thread("u", "t") is None  # oldest dropped
+    now[0] += timedelta(days=31)
+    store.record("v", "x", "q", {"type": "answer"})
+    assert store.list_threads("u") == []  # retention purge
+
+
+def test_history_endpoints_and_isolation(container):
+    import time
+
+    from app.history import MemoryHistoryStore
+    from app.security.auth import AuthUser
+    from app.security.service import authenticated_user, current_user
+
+    store = MemoryHistoryStore()
+    old, container.history = container.history, store
+    try:
+        app = create_app(container)
+        app.dependency_overrides[current_user] = app.dependency_overrides[authenticated_user] = lambda: AuthUser("alice", "a@x")
+        with TestClient(app) as c:
+            r = c.post("/api/chat", json={"question": "net gmv by zone last 7 days", "thread_id": "abc"})
+            assert r.status_code == 200
+            for _ in range(50):  # the write is fire-and-forget
+                if store.list_threads("alice"):
+                    break
+                time.sleep(0.05)
+            listed = c.get("/api/threads").json()["threads"]
+            assert [t["id"] for t in listed] == ["abc"] and listed[0]["turns"] == 1 and listed[0]["title"].startswith("net gmv")
+            turn = c.get("/api/threads/abc").json()["turns"][0]
+            assert turn["question"].startswith("net gmv") and turn["response"]["type"] in ("answer", "rca", "info")
+            assert c.get("/api/threads/bad.id").status_code == 422
+            app.dependency_overrides[current_user] = lambda: AuthUser("bob", "b@x")
+            assert c.get("/api/threads").json()["threads"] == []
+            assert c.get("/api/threads/abc").status_code == 404
+            c.delete("/api/threads/abc")
+            assert store.get_thread("alice", "abc") is not None  # bob cannot delete alice's chat
+            app.dependency_overrides[current_user] = lambda: AuthUser("alice", "a@x")
+            assert c.delete("/api/threads/abc").status_code == 204 and c.get("/api/threads/abc").status_code == 404
+    finally:
+        container.history = old

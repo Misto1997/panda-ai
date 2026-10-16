@@ -11,6 +11,7 @@ class RunUpdate:
     node: str
     steps: list[dict] = field(default_factory=list)
     response: dict | None = None
+    started: bool = False  # True: the node has just begun (live progress), False: it finished and `steps`/`response` are its output
 
 
 class TurnRunner:
@@ -21,7 +22,11 @@ class TurnRunner:
 
     def stream(self, question: str, thread_id: str, options: TurnOptions) -> Iterator[RunUpdate]:
         config = {"configurable": {"thread_id": thread_id}}
-        for chunk in self._graph.stream({"question": question, "options": options}, config, stream_mode="updates"):
+        for mode, chunk in self._graph.stream({"question": question, "options": options}, config, stream_mode=["updates", "custom"]):
+            if mode == "custom":
+                if isinstance(chunk, dict) and chunk.get("event") == "node_started":
+                    yield RunUpdate(str(chunk["node"]), started=True)
+                continue
             for node, update in chunk.items():
                 if update:
                     yield RunUpdate(node, update.get("trace") or [], update.get("response"))

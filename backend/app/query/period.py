@@ -28,6 +28,25 @@ def normalize_time_expr(expr: str) -> str:
     return e.replace("past_", "last_", 1) if e.startswith("past_") else e
 
 
+_COUNT = re.compile(r"\b(?:last|past|previous)\s+(\d+)\s+(day|days|week|weeks|month|months)\b")
+_EXPLICIT = re.compile(r"(\d{4}-\d{2}-\d{2})\s*(?:to|until|through|\.\.|-|and)\s*(\d{4}-\d{2}-\d{2})")
+_NAMED = [(re.compile(p), v) for p, v in (
+    (r"\byesterday\b", "yesterday"), (r"\b(?:last|previous) week\b", "last_week"), (r"\bpast week\b", "last_7_days"),
+    (r"\bthis week\b", "this_week"), (r"\b(?:last|previous) month\b", "last_month"), (r"\bpast month\b", "last_30_days"),
+    (r"\b(?:this month|month to date|mtd)\b", "mtd"), (r"\ball time\b", "all_time"))]
+
+
+def extract_time_expr(text: str) -> str | None:
+    """The period a question names, in the grammar PeriodResolver understands, or None. Deterministic: models never get to guess dates."""
+    q = (text or "").lower()
+    if m := _EXPLICIT.search(q):
+        return f"{m.group(1)}..{m.group(2)}"
+    if m := _COUNT.search(q):
+        n, unit = int(m.group(1)), m.group(2)
+        return f"last_{n * (7 if unit.startswith('week') else 30 if unit.startswith('month') else 1)}_days"
+    return next((value for pattern, value in _NAMED if pattern.search(q)), None)
+
+
 @dataclass(frozen=True)
 class Period:
     start: date

@@ -106,6 +106,8 @@ class AgUiEvents:
 
     def __init__(self, thread_id: str, run_id: str) -> None:
         self.thread_id, self.run_id = thread_id, run_id
+        self._open: set[str] = set()
+        self._closed: set[str] = set()
 
     def run_started(self) -> RunStarted:
         return RunStarted(thread_id=self.thread_id, run_id=self.run_id, timestamp=_now())
@@ -118,12 +120,34 @@ class AgUiEvents:
     def run_error(message: str, code: str | None = None) -> RunError:
         return RunError(message=message, code=code, timestamp=_now())
 
-    @staticmethod
-    def step(step: dict) -> list[AgUiEvent]:
-        """One trace step => STEP_STARTED, STEP_FINISHED and a panda.step CUSTOM event carrying the detail."""
-        name = str(step["step"])
-        return [StepStarted(step_name=name, timestamp=_now()), StepFinished(step_name=name, timestamp=_now()),
-                Custom(name=CustomEventName.STEP, value=step, timestamp=_now())]
+    def step_running(self, node: str) -> list[AgUiEvent]:
+        """A node has begun: STEP_STARTED plus a panda.step marked running (its finished record follows)."""
+        self._open.add(node)
+        return [StepStarted(step_name=node, timestamp=_now()),
+                Custom(name=CustomEventName.STEP, value={"node": node, "step": node, "detail": "", "ms": 0, "status": "running"}, timestamp=_now())]
+
+    def step(self, step: dict) -> list[AgUiEvent]:
+        """A finished trace record. STEP_STARTED/FINISHED are per node (a node may report several records, only the first closes it);
+        the panda.step CUSTOM event carries every record's detail."""
+        node, events = str(step["node"]), []
+        if node not in self._open and node not in self._closed:
+            events.append(StepStarted(step_name=node, timestamp=_now()))
+            self._open.add(node)
+        if node in self._open:
+            events.append(StepFinished(step_name=node, timestamp=_now()))
+            self._open.discard(node)
+            self._closed.add(node)
+        return [*events, Custom(name=CustomEventName.STEP, value=step, timestamp=_now())]
+
+    def step_skipped(self, node: str) -> list[AgUiEvent]:
+        """A node finished without reporting anything (for example narration that was not needed): close it quietly."""
+        out: list[AgUiEvent] = []
+        if node in self._open:
+            out.append(StepFinished(step_name=node, timestamp=_now()))
+            self._open.discard(node)
+            self._closed.add(node)
+        out.append(Custom(name=CustomEventName.STEP, value={"node": node, "step": node, "detail": "", "ms": 0, "status": "skipped"}, timestamp=_now()))
+        return out
 
     @staticmethod
     def text_message(text: str) -> list[AgUiEvent]:

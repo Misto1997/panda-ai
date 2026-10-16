@@ -1,7 +1,7 @@
 PY := backend/.venv/bin
 # Active profile = config/profiles/<name>.yaml, e.g.  make api PANDA_PROFILE=prod
 export PANDA_PROFILE ?= local
-.PHONY: probe doctor gcp-diagnose config setup data test bench api api-debug ask web up ingest typecheck gcp-setup gcp-build gcp-deploy gcp-bootstrap gcp-budget gcp-smoke
+.PHONY: gcp-refresh gcp-hosting probe doctor gcp-diagnose config setup data test bench api api-debug ask web up ingest typecheck gcp-setup gcp-build gcp-deploy gcp-bootstrap gcp-budget gcp-smoke
 
 probe:            ## latency/UX probe of a running instance (needs only `pip3 install httpx`): make probe API=https://panda-api-....run.app WEB=https://panda-web-....run.app ID_TOKEN=eyJ...
 	$(or $(wildcard backend/.venv/bin/python),python3) backend/scripts/probe.py --api $(or $(API),http://localhost:8000) $(if $(WEB),--web $(WEB),) $(ARGS)
@@ -67,3 +67,9 @@ gcp-smoke:        ## curl the deployed services
 
 gcp-diagnose:     ## run the diagnostics inside the VPC as a Cloud Run Job (reads the private database; one real Gemini call)
 	deploy/40-bootstrap-job.sh diagnose
+
+gcp-refresh:      ## nightly data roll-forward: make gcp-refresh CMD=create|run|pause|resume|extend|status|delete [DAYS=30]
+	deploy/45-nightly-refresh.sh $(or $(CMD),status) $(DAYS)
+
+gcp-hosting:      ## free <site>.web.app address via Firebase Hosting: make gcp-hosting HOSTING_SITE=panda-ai
+	deploy/70-hosting.sh

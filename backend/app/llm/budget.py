@@ -2,6 +2,7 @@
 (in any worker thread that inherited the context) consumes one unit. No open budget (CLI, bootstrap) means unlimited."""
 from __future__ import annotations
 
+import contextlib
 import threading
 from contextvars import ContextVar
 
@@ -31,8 +32,12 @@ def open_turn_budget(limit: int) -> TurnLlmBudget:
 
 
 class BudgetedLlm:
-    def __init__(self, inner: LlmClient) -> None:
+    def __init__(self, inner: LlmClient, max_concurrency: int = 0) -> None:
         self._inner, self.name = inner, inner.name
+        self._slots = threading.BoundedSemaphore(max_concurrency) if max_concurrency > 0 else None
+
+    def _slot(self):
+        return self._slots if self._slots is not None else contextlib.nullcontext()
 
     @staticmethod
     def _charge() -> None:
@@ -41,8 +46,10 @@ class BudgetedLlm:
 
     def structured(self, schema: type[T], prompt: Prompt, context: LlmContext | None = None) -> T:
         self._charge()
-        return self._inner.structured(schema, prompt, context)
+        with self._slot():
+            return self._inner.structured(schema, prompt, context)
 
     def text(self, prompt: Prompt, tier: ModelTier = ModelTier.FAST, context: LlmContext | None = None) -> str:
         self._charge()
-        return self._inner.text(prompt, tier, context)
+        with self._slot():
+            return self._inner.text(prompt, tier, context)

@@ -51,6 +51,7 @@ class ResultMeta(BaseModel):
     total_ms: float | None = None
     bytes_processed: int | None = None   # engine-reported scan size (BigQuery)
     path: str | None = None              # how the SQL was produced: text_to_sql | ir_fallback | cache
+    narrated: bool | None = None         # True when the model-written text replaced the standard summary
     sql_attempts: int | None = None      # generation + repair attempts
 
 

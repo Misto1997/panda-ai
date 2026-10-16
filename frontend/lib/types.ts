@@ -1,6 +1,6 @@
 // Mirrors backend/app/schemas/{chat,agui}.py and backend/app/rca/models.py. Keep in sync.
 export type CacheStatus = "hit" | "miss" | "off";
-export type Step = { node: string; step: string; detail: string; ms: number; cache?: CacheStatus };
+export type Step = { node: string; step: string; detail: string; ms: number; cache?: CacheStatus; status?: "running" | "skipped" };
 export type Table = { columns: string[]; rows: (string | number | null)[][]; formats: Record<string, string>; titles: Record<string, string>; truncated?: boolean };
 
 export type SegmentContribution = {
@@ -20,7 +20,7 @@ export type Rca = {
 export type ResultMeta = {
   route: string; engine?: string; llm?: string; sources?: Record<string, string>; elapsed_ms?: number; cache?: CacheStatus;
   ir_source?: string; period?: string; rows?: number; docs?: string[]; tree?: string; queries?: number; total_ms?: number;
-  bytes_processed?: number; path?: string; sql_attempts?: number;
+  bytes_processed?: number; path?: string; sql_attempts?: number; narrated?: boolean;
 };
 export type Result = {
   type: "answer" | "rca" | "info" | "error"; text: string; table?: Table; chart?: Record<string, unknown> | null;
@@ -30,6 +30,8 @@ export type Turn = {
   id: number; question: string; steps: Step[]; text: string; surface?: A2uiMessage[]; result?: Result;
   error?: string; done: boolean;
 };
+export type ThreadSummary = { id: string; title: string; updated_at: string; turns: number };
+export type StoredTurn = { question: string; response: Result; surface?: A2uiMessage[] | null; created_at: string };
 export type Me = { email?: string; remaining_today?: number; daily_limit?: number };
 export type CacheStats = { plan_hits: number; plan_misses: number; result_hits: number; result_misses: number; plan_entries: number; result_entries: number };
 export type Meta = {

@@ -39,3 +39,20 @@ def test_decomposition_sums_to_the_change_and_finds_cancellations(container):
 def test_metric_without_runbook_still_gets_a_drill(container):
     r = investigate(container, "gross_units")
     assert r.tree is None and r.hypotheses == [] and r.drill.cells
+
+
+def test_rca_reads_run_concurrently(container, monkeypatch):
+    """Warehouse reads are the RCA bottleneck on BigQuery (1-2 s each): with 50 ms per query the parallel run must beat a serial one clearly."""
+    import time
+
+    engine, real = container.query_service.engine, container.query_service.engine.run
+
+    def slow(sql, timeout_s):
+        time.sleep(0.05)
+        return real(sql, timeout_s)
+
+    monkeypatch.setattr(engine, "run", slow)
+    started = time.perf_counter()
+    report = investigate(container, "net_gmv")
+    elapsed = time.perf_counter() - started
+    assert report.queries_run >= 15 and report.hypotheses and elapsed < report.queries_run * 0.05 * 0.6, (elapsed, report.queries_run)

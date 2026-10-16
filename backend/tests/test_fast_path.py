@@ -1,0 +1,183 @@
+"""Regression tests for the latency work: deterministic routing, period guard, optional narration, live step events."""
+from types import SimpleNamespace
+
+import pytest
+
+from app.agents.routing import RuleRouter
+from app.core.enums import Route
+from app.core.errors import GuardViolationError, LlmUnavailableError
+from app.llm.vocabulary import build_vocabulary
+from app.query.period import extract_time_expr
+from app.schemas.agui import AgUiEvents
+
+
+@pytest.fixture(scope="module")
+def router(container):
+    return RuleRouter(build_vocabulary(container.catalog))
+
+
+@pytest.mark.parametrize("question, route", [
+    ("hello", Route.HELP), ("What can you do?", Route.HELP),
+    ("What is BU visits?", Route.DISCOVER), ("How is net realization rate defined?", Route.DISCOVER), ("define ASP", Route.DISCOVER),
+    ("Net GMV by zone for the last 7 days", Route.QNA), ("and by marketplace?", Route.QNA), ("only Acme Express", Route.QNA),
+    ("now as a daily trend", Route.QNA), ("what about visits?", Route.QNA), ("What is the net gmv for West last week?", Route.QNA),
+    ("Why did Net GMV drop in the last 14 days?", Route.RCA), ("why did it drop?", Route.RCA), ("what caused the fall in visits", Route.RCA),
+    ("tell me something interesting", None),
+])
+def test_rule_router(router, question, route):
+    assert router.route(question) == route
+
+
+@pytest.mark.parametrize("text, expr", [
+    ("net gmv for the last 7 days", "last_7_days"), ("past 2 weeks of visits", "last_14_days"), ("What about yesterday?", "yesterday"),
+    ("sales last week", "last_week"), ("this month so far", "mtd"), ("between 2026-09-01 and 2026-09-10", "2026-09-01..2026-09-10"),
+    ("net gmv by zone", None), ("last 3 months", "last_90_days"),
+])
+def test_period_is_extracted_from_the_question_not_guessed(text, expr):
+    assert extract_time_expr(text) == expr
+
+
+def _planner(container):
+    from app.agents.nodes.planner import SqlPlannerNode
+    deps = SimpleNamespace(settings=container.settings, catalog=container.catalog, query_service=container.query_service, cache=container.cache,
+                           search=container.search, llm=container.llm, prompts=None, vocabulary=build_vocabulary(container.catalog))
+    return SqlPlannerNode(deps)
+
+
+def test_sql_with_invented_dates_is_rejected_and_correct_dates_pass(container):
+    svc, planner = container.query_service, _planner(container)
+    sql = "SELECT zone, SUM(net_gmv) AS net_gmv FROM sales WHERE order_date >= DATE '{a}' AND order_date < DATE '{b}' GROUP BY zone"
+    good = svc.prepare_sql(sql.format(a="2026-09-24", b="2026-10-01"))   # the real last 7 days of data ending 2026-09-30
+    bad = svc.prepare_sql(sql.format(a="2026-03-01", b="2026-03-08"))    # a plausible-looking but wrong (historic) week
+    planner._check_period("Net GMV by zone for the last 7 days", good)
+    with pytest.raises(GuardViolationError, match="Period mismatch.*2026-09-24"):
+        planner._check_period("Net GMV by zone for the last 7 days", bad)
+    planner._check_period("Net GMV by zone", bad)                         # no period named: nothing to enforce
+    planner._check_period("last 7 days versus previous 7 days", bad)      # comparisons span several ranges: not enforced
+    unparsed = svc.prepare_sql("SELECT SUM(net_gmv) AS net_gmv FROM sales WHERE order_date = DATE '2026-09-30'")
+    planner._check_period("net gmv yesterday", unparsed)                   # no range the normaliser understands: never a false rejection
+
+
+def _narrate(container, llm):
+    from app.agents.nodes.narrate import NarrateNode
+    from app.prompts.registry import PROMPTS
+    deps = SimpleNamespace(settings=container.settings, cache=container.cache, llm=llm, prompts=PROMPTS)
+    return NarrateNode(deps)
+
+
+ANSWER = {"type": "answer", "text": "standard summary", "meta": {"route": "qna"},
+          "table": {"columns": ["zone", "net_gmv"], "rows": [["N", 1.0], ["S", 2.0]], "formats": {"net_gmv": "currency"}, "titles": {"net_gmv": "Net GMV"}}}
+
+
+def test_a_failing_model_never_destroys_an_answer(container):
+    class Down:
+        name = "down"
+        def text(self, *a, **k): raise LlmUnavailableError("busy")
+    node = _narrate(container, Down())
+    out = node({"question": "q", "options": {"bypass_cache": True}, "response": ANSWER})
+    assert "response" not in out and "kept the standard summary" in out["trace"][0]["detail"]   # the good response stays untouched
+
+    class Boom:
+        name = "boom"
+        def text(self, *a, **k): raise RuntimeError("unexpected")
+    assert "response" not in _narrate(container, Boom())({"question": "q", "options": {"bypass_cache": True}, "response": ANSWER})
+
+
+def test_single_value_answers_and_errors_skip_the_model(container):
+    class Fail:
+        name = "fail"
+        def text(self, *a, **k): raise AssertionError("must not be called")
+    node = _narrate(container, Fail())
+    one = {**ANSWER, "table": {**ANSWER["table"], "rows": [["N", 1.0]]}}
+    assert "response" not in node({"question": "q", "response": one}) and "response" not in node({"question": "q", "response": {"type": "error", "text": "x"}})
+
+
+def test_step_events_pair_up_per_node_and_skipped_nodes_close():
+    ev = AgUiEvents("t", "r")
+    seq = [*ev.step_running("plan"), *ev.step({"node": "plan", "step": "retrieve", "detail": "", "ms": 1}), *ev.step({"node": "plan", "step": "plan", "detail": "", "ms": 2}),
+           *ev.step_running("narrate"), *ev.step_skipped("narrate")]
+    started = [e.step_name for e in seq if e.type == "STEP_STARTED"]
+    finished = [e.step_name for e in seq if e.type == "STEP_FINISHED"]
+    assert started == finished == ["plan", "narrate"]
+
+
+def test_nightly_refresh_ends_yesterday_clears_cache_and_expires(settings, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    from app.bootstrap import __main__ as boot
+
+    calls = []
+    monkeypatch.setattr(boot, "run_data", lambda s, rows, days, end, *rest: calls.append(end))
+    yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    assert boot.run_refresh(settings, 1000, 30, until=None) == 0 and calls == [yesterday]          # rolls the window forward to yesterday
+    assert boot.run_refresh(settings, 1000, 30, until="2000-01-01") == 0 and calls == [yesterday]  # past `until`: a no-op, no data touched
+
+
+def test_model_calls_are_capped_per_instance():
+    """Bursting is what trips provider capacity limits: at most N model calls run at once, the rest wait."""
+    import threading
+    import time
+
+    from app.core.enums import ModelTier
+    from app.llm.base import Prompt
+    from app.llm.budget import BudgetedLlm
+
+    live, peak, lock = 0, 0, threading.Lock()
+
+    class Slow:
+        name = "slow"
+        def text(self, prompt, tier=ModelTier.FAST, context=None):
+            nonlocal live, peak
+            with lock:
+                live += 1
+                peak = max(peak, live)
+            time.sleep(0.05)
+            with lock:
+                live -= 1
+            return "ok"
+
+    llm = BudgetedLlm(Slow(), max_concurrency=2)
+    threads = [threading.Thread(target=llm.text, args=(Prompt("s", "u"),)) for _ in range(8)]
+    [t.start() for t in threads]; [t.join() for t in threads]
+    assert peak == 2
+
+
+def test_prune_deletes_children_before_parents_for_stale_threads(settings):
+    from contextlib import contextmanager
+
+    from app.bootstrap.prune import prune
+    from app.core.enums import StoreKind
+
+    log = []
+
+    class Conn:
+        def execute(self, sql, params=()):
+            log.append(sql.split()[0] + " " + (sql.split("FROM")[1].split()[0] if "FROM" in sql else ""))
+            return SimpleNamespace(fetchall=lambda: [("old-thread",)], rowcount=3)
+        @contextmanager
+        def transaction(self):
+            yield
+
+    class Pool:
+        @contextmanager
+        def connection(self):
+            yield Conn()
+
+    s = settings.model_copy(update={"checkpointer": StoreKind.POSTGRES, "cache_store": StoreKind.POSTGRES})
+    out = prune(s, 7, pool=Pool())
+    deletes = [x for x in log if x.startswith("DELETE")]
+    assert [d.split()[1] for d in deletes] == ["checkpoint_writes", "checkpoint_blobs", "checkpoints", "panda_cache"] and out["threads"] == 1
+    assert prune(settings, 7, pool=Pool()) == {}   # in-memory profile: nothing to do
+
+
+def test_narration_of_a_time_series_works_end_to_end(container):
+    """Regression (found by `make bench`): date columns carry the 'date' format and must not be fed to the number formatter."""
+    from app.agents.nodes.narrate import NarrateNode
+    from app.prompts.registry import PROMPTS
+
+    deps = SimpleNamespace(settings=container.settings, cache=container.cache, llm=container.llm, prompts=PROMPTS)
+    resp = {"type": "answer", "text": "standard", "meta": {"route": "qna"},
+            "table": {"columns": ["date", "net_gmv"], "rows": [["2026-09-29", 1.0], ["2026-09-30", 2.0]],
+                      "formats": {"date": "date", "net_gmv": "currency"}, "titles": {"date": "Date", "net_gmv": "Net GMV"}}}
+    out = NarrateNode(deps)({"question": "net gmv daily", "options": {"bypass_cache": True}, "response": resp})
+    assert out["response"]["meta"]["narrated"] is True and out["response"]["text"]

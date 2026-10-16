@@ -18,7 +18,7 @@ class ChatController:
     def __init__(self, container: Container) -> None:
         self._max_chars = container.settings.max_question_chars
         self._quota, self._llm_calls = container.security.quota, container.settings.llm_max_calls_per_turn
-        self._streamer = ChatStreamService(container.runner, container.settings.sse_heartbeat_s)
+        self._streamer = ChatStreamService(container.runner, container.settings.sse_heartbeat_s, container.history)
         self.router = APIRouter(prefix="/api", tags=["chat"])
         self.router.add_api_route("/chat", self.chat, methods=["POST"], response_class=StreamingResponse)
 

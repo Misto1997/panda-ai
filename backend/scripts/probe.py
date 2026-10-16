@@ -89,6 +89,8 @@ def run_turn(api: str, token: str, question: str, thread: str | None, bypass_cac
                     res = event["value"]
                     out["result_bytes"] = len(line)
                     out["type"], out["meta"] = res.get("type"), res.get("meta", {})
+                    if res.get("type") == "error":
+                        out["error"] = "answer was an error: " + res.get("text", "")[:200]
                     out["rows"] = len((res.get("table") or {}).get("rows", []))
                     out["text_chars"] = len(res.get("text", ""))
                 elif etype == "TEXT_MESSAGE_START":
@@ -131,11 +133,13 @@ def main() -> int:
     ap.add_argument("--token", default=os.environ.get("ID_TOKEN", ""), help="Firebase ID token (or env ID_TOKEN); empty for AUTH_MODE=dev")
     ap.add_argument("--rounds", type=int, default=2, help="repeat the single-turn catalogue (round 2 shows the cache effect)")
     ap.add_argument("--quick", action="store_true", help="one question per kind, one round, shorter multi-turn")
+    ap.add_argument("--via-web", action="store_true", help="send chat through the web BFF (and Firebase Hosting if --web is that address)")
     ap.add_argument("--concurrency", type=int, default=4, help="parallel fresh sessions (0 = skip)")
     ap.add_argument("--out", help="write the full JSON report here")
     args = ap.parse_args()
     args.api = base_url(args.api)
     args.web = base_url(args.web) if args.web else None
+    chat_base = args.web if args.via_web and args.web else args.api  # where /api/chat is called
 
     report: dict = {"api": args.api, "started": time.strftime("%Y-%m-%d %H:%M:%S"), "turns": []}
     print(f"== PANDA AI probe: {args.api}")
@@ -169,7 +173,7 @@ def main() -> int:
     for rnd in range(1, rounds + 1):
         print(f"\n-- round {rnd}: single turns, fresh thread each")
         for kind, q in catalogue:
-            r = run_turn(args.api, args.token, q, uuid.uuid4().hex[:12])
+            r = run_turn(chat_base, args.token, q, uuid.uuid4().hex[:12])
             r.update(kind=kind, round=rnd, scenario="single")
             report["turns"].append(r)
             print(line(r))
@@ -179,7 +183,7 @@ def main() -> int:
     print("\n-- same session, multi turn (watch latency as the thread grows)")
     thread = "probe-" + uuid.uuid4().hex[:8]
     for i, q in enumerate(qs, 1):
-        r = run_turn(args.api, args.token, q, thread, bypass_cache=True)  # bypass cache: isolates thread-growth from caching
+        r = run_turn(chat_base, args.token, q, thread, bypass_cache=True)  # bypass cache: isolates thread-growth from caching
         r.update(kind="multi_turn", turn=i, scenario="same_session")
         report["turns"].append(r)
         print(f"t{i} " + line(r))
@@ -188,7 +192,7 @@ def main() -> int:
     print("\n-- different sessions, same questions (cache should carry across sessions)")
     for q in FRESH_SESSION_QS[: 2 if args.quick else 3]:
         for s in (1, 2):
-            r = run_turn(args.api, args.token, q, uuid.uuid4().hex[:12])
+            r = run_turn(chat_base, args.token, q, uuid.uuid4().hex[:12])
             r.update(kind="fresh_session", session=s, scenario="fresh_sessions")
             report["turns"].append(r)
             print(f"s{s} " + line(r))
@@ -198,7 +202,7 @@ def main() -> int:
         print(f"\n-- {args.concurrency} concurrent fresh sessions (cache bypassed)")
         t0 = time.perf_counter()
         with ThreadPoolExecutor(args.concurrency) as pool:
-            results = list(pool.map(lambda i: run_turn(args.api, args.token, QNA[i % len(QNA)][1], uuid.uuid4().hex[:12], bypass_cache=True),
+            results = list(pool.map(lambda i: run_turn(chat_base, args.token, QNA[i % len(QNA)][1], uuid.uuid4().hex[:12], bypass_cache=True),
                                     range(args.concurrency)))
         for r in results:
             r.update(kind="concurrent", scenario="concurrency")

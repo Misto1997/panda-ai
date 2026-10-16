@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -70,6 +71,34 @@ def run_warm(s: Settings) -> int:
     return failures
 
 
+def run_refresh(s: Settings, rows: int, days: int, until: str | None) -> int:
+    """Nightly roll-forward: regenerate the synthetic dataset so it ends YESTERDAY (UTC), reload BigQuery, clear the cache.
+    Does nothing after `until` (an ISO date), so a forgotten scheduler cannot run forever."""
+    from datetime import date, datetime, timedelta, timezone
+
+    today = datetime.now(timezone.utc).date()
+    if until and today > date.fromisoformat(until):
+        print(f"refresh window ended on {until}: nothing to do (pause or delete the Cloud Scheduler job)")
+        return 0
+    end = (today - timedelta(days=1)).isoformat()
+    print(f"rolling the dataset forward to end on {end}", flush=True)
+    run_data(s, rows, days, end, None, None, False)
+    try:
+        from app.cache.semantic_cache import create_cache_store
+        store = create_cache_store(s)
+        store.clear()  # cached plans/results describe the old date window
+        store.close()
+        print("cache cleared")
+    except Exception as e:  # a cache problem must not fail the data refresh
+        print(f"warning: cache not cleared: {e}", file=sys.stderr)
+    try:
+        from app.bootstrap.prune import prune
+        print("pruned old conversation state:", prune(s))
+    except Exception as e:  # housekeeping is best effort
+        print(f"warning: prune skipped: {e}", file=sys.stderr)
+    return 0
+
+
 def run_diagnose(s: Settings, ping_llm: bool) -> int:
     """Prints every dependency check. Exit code 1 if any fails. Runs inside the VPC when executed as a Cloud Run Job."""
     from app.container import build_container
@@ -100,6 +129,12 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--parquet-dir")
     sub.add_parser(BootstrapStep.INDEX, help="build the semantic index in Postgres/AlloyDB")
     sub.add_parser(BootstrapStep.WARM, help="replay demo questions to pre-fill the cache")
+    rf = sub.add_parser(BootstrapStep.REFRESH, help="roll the dataset forward to end yesterday, reload BigQuery, clear the cache")
+    rf.add_argument("--rows", type=int, default=20_000_000)
+    rf.add_argument("--days", type=int, default=120)
+    rf.add_argument("--until", default=os.environ.get("REFRESH_UNTIL"), help="ISO date after which the job does nothing")
+    pr = sub.add_parser(BootstrapStep.PRUNE, help="delete conversation state idle for more than --days and expired cache rows")
+    pr.add_argument("--days", type=int, default=7)
     dg = sub.add_parser(BootstrapStep.DIAGNOSE, help="check config, warehouse, database, index (add --llm for one real model call)")
     dg.add_argument("--llm", action="store_true")
     args = ap.parse_args(argv)
@@ -109,6 +144,11 @@ def main(argv: list[str] | None = None) -> int:
             run_data(s, args.rows, args.days, args.end, args.from_duckdb, args.parquet_dir, args.skip_load)
         elif args.step == BootstrapStep.INDEX:
             run_index(s)
+        elif args.step == BootstrapStep.PRUNE:
+            from app.bootstrap.prune import prune
+            print(prune(s, args.days))
+        elif args.step == BootstrapStep.REFRESH:
+            return run_refresh(s, args.rows, args.days, args.until)
         elif args.step == BootstrapStep.DIAGNOSE:
             return run_diagnose(s, args.llm)
         else:

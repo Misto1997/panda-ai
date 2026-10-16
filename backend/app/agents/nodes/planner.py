@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import re
 import time
+from datetime import date
 from dataclasses import dataclass
 
 from app.agents.base import AgentNode, NodeOutput
@@ -8,16 +10,19 @@ from app.agents.contracts import SqlDraft
 from app.agents.deps import NodeDependencies
 from app.agents.state import TurnState
 from app.core.enums import CacheStatus, DocKind, IrSource, LlmTask, NodeName, PromptId, QueryMode, QueryPath
-from app.core.errors import GuardViolationError, LlmError, LlmUnavailableError, QueryValidationError
+from app.core.errors import GuardViolationError, LlmError, LlmUnavailableError, PandaError, QueryValidationError
 from app.llm.base import LlmContext
 from app.prompts.context import SqlPromptContext
 from app.query.ir import QueryIR
+from app.query.period import extract_time_expr
 from app.query.service import PreparedSql
 
 CONTEXT_DOC_KINDS = {DocKind.METRIC, DocKind.DIMENSION, DocKind.GLOSSARY}
 CONTEXT_DOCS = 8
 EXAMPLE_DOCS = 4
 EXAMPLE_PREFIX = "example:"
+ALL_TIME_START = date(2000, 1, 1)  # the normaliser's stand-in when a query has no date range
+COMPARISON = re.compile(r"\b(vs|versus|compare|compared|comparison|previous|prior|than|growth|change|wow|mom|dod|yoy|against)\b")
 DECLINED = "That question cannot be answered with the available metrics. Ask about Net GMV, orders, ASP, visits or conversion."
 
 
@@ -46,7 +51,7 @@ class SqlPlannerNode(AgentNode):
         use_cache = not options.get("bypass_cache")
         mode = QueryMode.RAW if options.get("force_raw") else QueryMode.AUTO
         last_sql, last_ir = state.get("last_sql"), state.get("last_ir")
-        key = self.deps.cache.plan_key(question, last_sql or "")
+        key = self.deps.cache.plan_key(question, f"{self._anchor()}|{last_sql or ''}")  # plans hold explicit dates: never reuse them across data refreshes
 
         if use_cache and (hit := self.deps.cache.get_plan(key)) and (out := self._from_cache(hit, mode, started)):
             return out
@@ -76,6 +81,29 @@ class SqlPlannerNode(AgentNode):
             self.deps.cache.put_plan(key, {"sql": None, "ir": update["ir"], "docs": doc_ids})
         steps.append(self.step(f"ir fallback: metrics={ir.metrics} dims={ir.dimensions} time={ir.time_expr}", started, name="plan"))
         return NodeOutput(update, steps)
+
+    def _anchor(self) -> str:
+        try:
+            return str(self._svc.anchor)
+        except PandaError:
+            return ""
+
+    def _check_period(self, question: str, prepared: PreparedSql) -> None:
+        """The model must not invent dates: if the question names a period, the SQL has to cover exactly that period."""
+        if not self.deps.settings.enforce_time_guard or COMPARISON.search(question.lower()) or prepared.intent.period is None:
+            return
+        expr = extract_time_expr(question)
+        if expr is None:
+            return
+        want = self._svc.resolver.resolve(expr)
+        got = prepared.intent.period
+        if got.start == ALL_TIME_START and expr != "all_time":
+            return  # the normaliser found no date predicate it understands (for example `= DATE '...'`): nothing reliable to compare
+        if got != want:
+            raise GuardViolationError(
+                f"Period mismatch: the question asks for '{expr}', which is {want.start} to {want.last_day} inclusive, i.e. "
+                f">= DATE '{want.start}' AND < DATE '{want.end}'. Your SQL covers {got.start} to {got.last_day}. "
+                f"Use the dates from the named-period list; data ends {self._svc.anchor}.")
 
     # ---- cache ----
     def _from_cache(self, hit: dict, mode: QueryMode, started: float) -> NodeOutput | None:
@@ -116,6 +144,7 @@ class SqlPlannerNode(AgentNode):
                 raise QueryValidationError(draft.rationale or DECLINED)
             try:
                 prepared = self._svc.prepare_sql(draft.sql, mode)
+                self._check_period(question, prepared)
                 info = self._svc.dry_run(prepared)
                 if not info.ok:
                     raise GuardViolationError(f"The engine rejected the query: {info.error}")
