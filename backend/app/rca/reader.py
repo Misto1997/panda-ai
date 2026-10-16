@@ -44,9 +44,12 @@ class SegmentReader:
         for row in outcome.result.rows:
             key = tuple(str(row[index[d]]) for d in dims)
             if metric.is_ratio:
-                out[key] = Cell(row[index[f"{metric.id}__num"]] or 0.0, row[index[f"{metric.id}__den"]] or 0.0)
-            else:
-                out[key] = Cell(row[index[metric.id]] or 0.0, None)
+                num, den = row[index[f"{metric.id}__num"]], row[index[f"{metric.id}__den"]]
+                if num is None and den is None:
+                    continue  # no data in this period: 'missing' must not look like 'zero'
+                out[key] = Cell(num or 0.0, den or 0.0)
+            elif row[index[metric.id]] is not None:
+                out[key] = Cell(row[index[metric.id]], None)
         return out
 
     def value(self, metric: MetricSpec, period: Period, filters: Sequence[Filter] = ()) -> float | None:

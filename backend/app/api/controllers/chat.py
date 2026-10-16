@@ -28,5 +28,5 @@ class ChatController:
         await run_in_threadpool(self._quota.consume, user)  # one unit per turn; 401/429 above and here happen before any LLM call
         open_turn_budget(self._llm_calls)
         return StreamingResponse(
-            self._streamer.stream(body, request.is_disconnected), media_type="text/event-stream",
+            self._streamer.stream(body, request.is_disconnected, user.uid), media_type="text/event-stream",
             headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"})

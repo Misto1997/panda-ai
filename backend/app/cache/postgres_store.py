@@ -2,14 +2,16 @@
 Not exercised by the automated tests (no server in CI): kept deliberately small, parameterised and failure-tolerant."""
 from __future__ import annotations
 
+import json
 import threading
+import time
 
 import psycopg
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool, PoolTimeout
 
 from app.core.enums import CacheLayer
-from app.core.db import execute_script
+from app.core.db import POOL_RECYCLE, conn_kwargs, execute_script
 from app.core.logging import get_logger
 
 log = get_logger("cache.postgres")
@@ -21,16 +23,18 @@ CREATE INDEX IF NOT EXISTS panda_cache_created ON panda_cache (created_at);
 """
 PURGE_EVERY = 200  # puts between sweeps of expired rows
 POOL_TIMEOUT_S = 2.0
+BREAKER_S = 30.0  # after a failure skip the store for this long so an outage costs one timeout, not one per lookup
 
 
 class PostgresCacheStore:
     name = "postgres"
 
-    def __init__(self, url: str, ttl_s: float, max_pool: int = 4) -> None:
+    def __init__(self, url: str, ttl_s: float, max_pool: int = 2) -> None:
         self._ttl, self._puts, self._lock = ttl_s, 0, threading.Lock()
-        self._pool = ConnectionPool(url, min_size=1, max_size=max_pool, timeout=POOL_TIMEOUT_S, open=False,
-                                    kwargs={"autocommit": True, "connect_timeout": 5})
+        self._pool = ConnectionPool(url, min_size=0, max_size=max_pool, timeout=POOL_TIMEOUT_S, open=False,
+                                    check=ConnectionPool.check_connection, kwargs=conn_kwargs(5), **POOL_RECYCLE)
         self._ready = False
+        self._down_until = 0.0
 
     def get(self, layer: CacheLayer, key: str) -> dict | None:
         row = self._run("SELECT value FROM panda_cache WHERE layer = %s AND key = %s AND created_at > now() - make_interval(secs => %s)",
@@ -40,7 +44,7 @@ class PostgresCacheStore:
     def put(self, layer: CacheLayer, key: str, value: dict) -> None:
         self._run("INSERT INTO panda_cache (layer, key, value) VALUES (%s, %s, %s) "
                   "ON CONFLICT (layer, key) DO UPDATE SET value = EXCLUDED.value, created_at = now()",
-                  (layer.value, key, Jsonb(value)))
+                  (layer.value, key, Jsonb(value, dumps=lambda v: json.dumps(v, allow_nan=False, default=str))))
         with self._lock:
             self._puts += 1
             sweep = self._puts % PURGE_EVERY == 0
@@ -59,6 +63,8 @@ class PostgresCacheStore:
         self._pool.close()
 
     def _run(self, sql: str, params: tuple, fetch: bool = False) -> list | None:
+        if time.monotonic() < self._down_until:
+            return None
         try:
             if not self._ready:
                 self._pool.open()
@@ -68,6 +74,7 @@ class PostgresCacheStore:
             with self._pool.connection() as conn:
                 cur = conn.execute(sql, params)
                 return cur.fetchall() if fetch else None
-        except (psycopg.Error, PoolTimeout) as e:  # cache outage = miss, never a failed turn
+        except (psycopg.Error, PoolTimeout, ValueError) as e:  # cache outage = miss, never a failed turn (ValueError: unserialisable value)
             log.warning("cache store unavailable: %s", e)
+            self._down_until = time.monotonic() + BREAKER_S
             return None

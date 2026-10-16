@@ -8,6 +8,7 @@ from app.agents.state import TurnState
 from app.core.enums import DocKind, LlmTask, ModelTier, NodeName, PromptId, ResponseType
 from app.core.errors import LlmError, QueryValidationError
 from app.llm.base import LlmContext
+from app.query.period import TIME_GRAMMAR, normalize_time_expr
 from app.presentation.narrative import rca_summary
 from app.schemas.chat import ChatResult, ResultMeta
 
@@ -25,19 +26,22 @@ class RcaNode(AgentNode):
         docs = self.deps.search.search(question, RCA_CONTEXT_DOCS, RCA_DOC_KINDS)
         context = "\n".join(f"[{d.kind.value}] {d.id}: {d.text}" for d in docs)
         ctx = LlmContext(question=question, vocabulary=self.deps.vocabulary, last_intent=state.get("last_ir"))
-        request = self.deps.llm.structured(RcaRequest, self.deps.prompts.render(PromptId.RCA_REQUEST, question=question, context=context), ctx)
-        if request.metric not in self.deps.catalog.metrics:
+        request = self.deps.llm.structured(RcaRequest, self.deps.prompts.render(PromptId.RCA_REQUEST, question=question, context=context,
+                                                                       metric_ids=", ".join(self.deps.catalog.metrics), time_grammar=TIME_GRAMMAR), ctx)
+        metric = self.deps.catalog.find_metric(request.metric)
+        if metric is None:
             raise QueryValidationError(f"I can't investigate '{request.metric}'. Try Net GMV, visits, ASP or conversion rate.")
+        time_expr = normalize_time_expr(request.time_expr)
 
-        report = self.deps.investigator.investigate(request.metric, request.time_expr)
+        report = self.deps.investigator.investigate(metric.id, time_expr)
         facts = report.model_dump(mode="json")
         narrative = self._narrate(facts)
         result = ChatResult(
             type=ResponseType.RCA, text=narrative, rca=facts, sql="\n\n".join(report.sql_sample),
             meta=ResultMeta(route="rca", engine=self.deps.query_service.engine.name, llm=self.deps.llm.name, tree=report.tree,
                             queries=report.queries_run, elapsed_ms=round((time.perf_counter() - started) * 1000, 1), docs=[d.id for d in docs]))
-        last_ir = {"metrics": [request.metric], "dimensions": [], "filters": [], "time_expr": request.time_expr, "grain": "none"}
-        return NodeOutput({"response": result.to_state(), "last_ir": last_ir},
+        last_ir = {"metrics": [metric.id], "dimensions": [], "filters": [], "time_expr": time_expr, "grain": "none"}
+        return NodeOutput({"response": result.to_state(), "last_ir": last_ir, "last_sql": None},  # an RCA turn invalidates the previous SQL
                           [self.step(f"runbook={report.tree} {report.queries_run} governed queries", started)])
 
     def _narrate(self, facts: dict) -> str:

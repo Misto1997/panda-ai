@@ -46,9 +46,12 @@ export LLM_MAX_CALLS_PER_TURN="8"
 
 # Bootstrap job
 export BOOTSTRAP_ROWS="20000000"
-export JOB_MEMORY="8Gi"                          # Cloud Run's disk is memory-backed; 4Gi may be too small for 20M rows
+export JOB_MEMORY="16Gi"                         # /tmp is memory-backed: DuckDB file, spill dir and Parquet files all count against it
 
 # Budget
 export BILLING_ACCOUNT_ID="REPLACE"              # gcloud billing accounts list
 export BUDGET_AMOUNT="100"                       # in the billing account currency, no currency suffix
 export BUDGET_TOPIC="panda-budget-alerts"
+
+# Google accounts allowed to call /api/admin/* (diagnostics, cache clear) on the deployed API. Comma-separated.
+export ADMIN_EMAILS="devs.vibing@gmail.com"

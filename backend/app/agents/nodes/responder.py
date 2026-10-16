@@ -66,7 +66,8 @@ class ResponderNode(AgentNode):
         return names
 
     def _narrate(self, question: str, facts: dict) -> str:
-        prompt = self.deps.prompts.render(PromptId.ANSWER, question=question, columns=facts["columns"], rows=facts["rows"][:LLM_ROWS])
+        prompt = self.deps.prompts.render(PromptId.ANSWER, question=question, columns=facts["columns"], rows=facts["rows"][:LLM_ROWS],
+                                           formats=facts["formats"])
         try:
             return self.deps.llm.text(prompt, context=LlmContext(question=question, task=LlmTask.ANSWER, payload=facts))
         except LlmError as e:  # degrade gracefully: the data is still correct without the prose

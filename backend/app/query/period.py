@@ -14,6 +14,20 @@ _LAST_N = re.compile(r"last_(\d+)_days|last_n_days:(\d+)")
 MAX_DAYS = 3660
 
 
+TIME_GRAMMAR = ("today, yesterday, last_7_days, last_14_days, last_30_days, last_90_days, this_week, last_week, this_month, last_month, mtd, "
+                "all_time, last_N_days (N a number), or an explicit range YYYY-MM-DD..YYYY-MM-DD")
+_WORDS = re.compile(r"^(?:last|past|previous)_(\d+)_(day|days|week|weeks|month|months)$")
+
+
+def normalize_time_expr(expr: str) -> str:
+    """Tolerate how models spell periods: 'last 7 days', 'Past 2 weeks', 'last-month' -> the grammar resolve() understands."""
+    e = re.sub(r"[\s\-]+", "_", (expr or "").strip().lower())
+    if m := _WORDS.match(e):
+        n, unit = int(m.group(1)), m.group(2)
+        return f"last_{n * (7 if unit.startswith('week') else 30 if unit.startswith('month') else 1)}_days"
+    return e.replace("past_", "last_", 1) if e.startswith("past_") else e
+
+
 @dataclass(frozen=True)
 class Period:
     start: date

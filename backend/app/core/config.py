@@ -87,6 +87,7 @@ class Settings(BaseSettings):
     # Auth and abuse controls
     auth_mode: AuthMode = AuthMode.DEV
     firebase_project_id: str = ""
+    admin_emails: str = ""                    # comma-separated Google accounts allowed to call /api/admin/* in firebase mode
     daily_user_query_limit: int = 30
     daily_global_query_limit: int = 300
     max_request_bytes: int = 16 * 1024
@@ -109,6 +110,10 @@ class Settings(BaseSettings):
         elif active_profile() != "local":
             raise ConfigurationError(f"profile '{active_profile()}' not found: expected {path}")
         return tuple(sources)
+
+    @property
+    def admin_email_list(self) -> list[str]:
+        return [e.strip().lower() for e in self.admin_emails.split(",") if e.strip()]
 
     @property
     def uses_postgres(self) -> bool:

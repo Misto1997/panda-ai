@@ -24,6 +24,9 @@ def answer_summary(columns: list[str], rows: list[list], formats: dict[str, str]
 
 def rca_summary(f: dict) -> str:
     fmt = f["format"]
+    if f["rel"] is None:
+        return (f"There is no comparable data for {f['title']}: the analysed period " f"({f['current']['start']}..{f['current']['end']}) or its baseline "
+                f"({f['baseline']['start']}..{f['baseline']['end']}) has no rows.")
     verb = "fell" if (f["rel"] or 0) < 0 else "rose"
     lines = [f"**{f['title']} {verb} {abs(f['rel'] or 0):.1%}** ({format_value(f['baseline']['value'], fmt)} to {format_value(f['current']['value'], fmt)}), "
              f"comparing {f['current']['start']}..{f['current']['end']} with {f['baseline']['start']}..{f['baseline']['end']}."]

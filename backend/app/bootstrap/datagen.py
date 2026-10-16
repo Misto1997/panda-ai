@@ -37,7 +37,7 @@ def _case(col: str, weighted: list[tuple[str, float]]) -> str:
 
 
 def generate_dataset(path: str | Path, semantic_dir: str, rows: int = 20_000_000, days: int = 120,
-                     end_date: str = "2026-09-30") -> dict[str, int]:
+                     end_date: str = "2026-09-30", memory_limit: str | None = None, threads: int | None = None) -> dict[str, int]:
     """Creates (replacing) a DuckDB file at `path`. Returns row counts per table."""
     hierarchy = load_catalog(semantic_dir).dimensions["city"].hierarchy
     per_zone: dict[str, list[str]] = {}
@@ -49,6 +49,10 @@ def generate_dataset(path: str | Path, semantic_dir: str, rows: int = 20_000_000
     path.parent.mkdir(parents=True, exist_ok=True)
     path.unlink(missing_ok=True)
     con = duckdb.connect(str(path))
+    if memory_limit:  # on Cloud Run the temp dir is memory-backed: keep DuckDB well under the container limit
+        con.execute(f"SET memory_limit='{memory_limit}'")
+    if threads:
+        con.execute(f"SET threads={int(threads)}")
     con.execute("SELECT setseed(0.42)")
     con.execute("CREATE TABLE dim_geo (city VARCHAR, state VARCHAR, region VARCHAR, zone VARCHAR)")
     con.executemany("INSERT INTO dim_geo VALUES (?,?,?,?)", [(c, a["state"], a["region"], a["zone"]) for c, a in hierarchy.items()])

@@ -34,12 +34,17 @@ def test_ratio_cast_and_guard_accepts_compiler_sql(container):
     SqlGuard(container.catalog.physical_tables(), "bigquery", 100).check(sql)  # guard parses with engine.dialect
 
 
-class _FakeJob:
-    total_bytes_processed, cache_hit = 1234, False
+class _FakeRows(list):
+    """Like google.cloud.bigquery RowIterator: iterable, and carries the schema."""
     schema = [type("F", (), {"name": "zone"}), type("F", (), {"name": "net_gmv"})]
 
+
+class _FakeJob:
+    total_bytes_processed, cache_hit = 1234, False
+    schema = None  # regression: on real jobs this is unset; only the RowIterator returned by result() has the schema
+
     def result(self, timeout=None):
-        return [type("R", (), {"values": lambda self: ("West", 1.5)})()]
+        return _FakeRows([type("R", (), {"values": lambda self: ("West", 1.5)})()])
 
 
 class _FakeClient:
@@ -104,3 +109,26 @@ def test_turn_llm_budget():
             llm.text(Prompt("s", "u"))
     finally:
         _current.set(None)
+
+
+# ---- regressions from the pre-deploy review ----
+def test_division_is_safe_and_cte_names_are_case_insensitive():
+    out = to_bigquery("WITH cur AS (SELECT SUM(a) AS a, SUM(b) AS b FROM agg_sales_daily) SELECT a / b AS r, a / 2 AS h FROM CUR", "p", "d")
+    assert "SAFE_DIVIDE(a, b)" in out and "a / 2" in out          # variable denominators guarded, literal ones untouched
+    assert "`d`.`CUR`" not in out and "FROM CUR" in out            # the CTE reference is not qualified as a physical table
+
+
+def test_duckdb_hugeint_sums_are_exported_as_bigint(tmp_path):
+    import duckdb, pyarrow.parquet as pq
+
+    from app.bootstrap.bq_load import export_parquet
+
+    con = duckdb.connect()
+    con.execute("CREATE TABLE t AS SELECT 'a' AS k, SUM(x) AS n FROM (SELECT 3::INTEGER AS x UNION ALL SELECT 4) GROUP BY k")
+    path = export_parquet(con, "t", tmp_path)
+    assert str(pq.read_schema(path).field("n").type) == "int64"
+
+
+def test_nan_and_infinity_become_null_for_json():
+    from app.engines.duckdb_engine import to_jsonable
+    assert [to_jsonable(v) for v in (float("nan"), float("inf"), -float("inf"), 1.5)] == [None, None, None, 1.5]

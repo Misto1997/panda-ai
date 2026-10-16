@@ -41,7 +41,10 @@ def export_parquet(con: duckdb.DuckDBPyConnection, table: str, out_dir: Path) ->
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{table}.parquet"
     path.unlink(missing_ok=True)
-    con.execute(f"COPY (SELECT * FROM {table}) TO '{path}' (FORMAT PARQUET, COMPRESSION SNAPPY)")
+    # DuckDB SUM(integer) is HUGEINT, which Parquet stores as double (BigQuery FLOAT64): cast to BIGINT to keep exact integers
+    cols = [f"CAST({c} AS BIGINT) AS {c}" if t.upper() == "HUGEINT" else c
+            for c, t in con.execute(f"SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '{table}' ORDER BY ordinal_position").fetchall()]
+    con.execute(f"COPY (SELECT {', '.join(cols)} FROM {table}) TO '{path}' (FORMAT PARQUET, COMPRESSION SNAPPY)")
     return path
 
 

@@ -1,7 +1,10 @@
 PY := backend/.venv/bin
 # Active profile = config/profiles/<name>.yaml, e.g.  make api PANDA_PROFILE=prod
 export PANDA_PROFILE ?= local
-.PHONY: config setup data test bench api api-debug ask web up ingest typecheck gcp-setup gcp-build gcp-deploy gcp-bootstrap gcp-budget gcp-smoke
+.PHONY: doctor gcp-diagnose config setup data test bench api api-debug ask web up ingest typecheck gcp-setup gcp-build gcp-deploy gcp-bootstrap gcp-budget gcp-smoke
+
+doctor:           ## check every dependency of the active profile (warehouse, database, index, model); LLM=1 makes one real model call
+	cd backend && PYTHONPATH=. ../$(PY)/python -m app.bootstrap diagnose $(if $(LLM),--llm,)
 
 config:           ## show the effective configuration for the active profile (secrets redacted)
 	cd backend && PYTHONPATH=. ../$(PY)/python -m app.config_show
@@ -58,3 +61,6 @@ gcp-budget:       ## budget alerts + kill-switch
 
 gcp-smoke:        ## curl the deployed services
 	deploy/60-smoke.sh
+
+gcp-diagnose:     ## run the diagnostics inside the VPC as a Cloud Run Job (reads the private database; one real Gemini call)
+	deploy/40-bootstrap-job.sh diagnose

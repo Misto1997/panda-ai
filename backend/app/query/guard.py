@@ -4,6 +4,7 @@ LogicalGuard validates LLM-written SQL against the logical semantic tables (AST 
 SqlGuard is the last line of defence on the physical SQL that is about to run (compiler output or rewriter output)."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 import sqlglot
@@ -21,11 +22,11 @@ _NO_SOURCE = tuple(getattr(exp, n) for n in ("Unnest", "Lateral", "Values", "Piv
 # Functions the model may call. Anything else (including every anonymous/unknown function such as read_csv, pg_sleep) is rejected.
 _ALLOWED_FUNCTIONS = tuple(getattr(exp, n) for n in (
     "Sum", "Count", "Avg", "Min", "Max", "Round", "Cast", "TryCast", "Coalesce", "Nullif", "Abs", "Ceil", "Floor", "Sqrt", "Pow",
-    "Ln", "Log", "Greatest", "Least", "If", "Case", "DateTrunc", "TimestampTrunc", "DateAdd", "DateSub", "DateDiff", "TsOrDsAdd",
-    "TsOrDsDiff", "TsOrDsToDate", "TsOrDsToTimestamp", "Date", "StrToDate", "Extract", "Year", "Month", "Day", "DayOfWeek",
-    "CurrentDate", "Lower", "Upper", "Concat", "Length", "Substring", "Rank", "DenseRank", "RowNumber", "Lag", "Lead",
-    "FirstValue", "LastValue", "Window", "Distinct", "Between", "In", "Exists", "Quantile", "ApproxQuantile", "Stddev", "StddevPop",
-    "Variance", "Interval", "Paren", "Div", "Mod", "SafeDivide", "DateStrToDate", "CurrentTimestamp", "Trim", "Left", "Right") if hasattr(exp, n))
+    "Ln", "Log", "Greatest", "Least", "If", "Case", "DateTrunc", "TimestampTrunc", "DateDiff", "TsOrDsAdd",
+    "TsOrDsDiff", "TsOrDsToDate", "TsOrDsToTimestamp", "Date", "StrToDate", "Extract", "Year", "Month", "Day", 
+     "Lower", "Upper", "Concat", "Length", "Substring", "Rank", "DenseRank", "RowNumber", "Lag", "Lead",
+    "FirstValue", "LastValue", "Window", "Distinct", "Between", "In", "Exists", "Stddev", "StddevPop",
+    "Variance", "Paren", "Div", "Mod", "SafeDivide", "DateStrToDate", "Trim", "Left", "Right") if hasattr(exp, n))
 _JOIN_SOURCES = (exp.Table,)
 MAX_SQL_CHARS = 6000
 
@@ -35,6 +36,16 @@ class ValidatedSql:
     """Parsed logical SQL plus the per-reference column usage the rewriter needs."""
     tree: exp.Expression
     analysis: Analysis
+
+
+_FENCE = re.compile(r"^```[a-zA-Z]*\s*\n?(.*?)\n?```\s*$", re.S)
+
+
+def _strip_fence(sql: str | None) -> str:
+    """Models often wrap SQL in a markdown code fence; accept it instead of burning a repair attempt."""
+    text = (sql or "").strip()
+    match = _FENCE.match(text)
+    return (match.group(1) if match else text).strip().rstrip(";").strip()
 
 
 class LogicalGuard:
@@ -52,7 +63,7 @@ class LogicalGuard:
 
     # ---- rules ----
     def _parse(self, sql: str) -> exp.Expression:
-        text = (sql or "").strip().rstrip(";").strip()
+        text = _strip_fence(sql)
         if not text:
             raise GuardViolationError("The SQL is empty.")
         if len(text) > self.max_chars:
@@ -93,10 +104,14 @@ class LogicalGuard:
 
     def _function_rules(self, tree: exp.Expression) -> None:
         for node in tree.find_all(exp.Func):
+            if isinstance(node, (exp.CurrentDate, exp.CurrentTimestamp, exp.CurrentDatetime)):
+                raise GuardViolationError("CURRENT_DATE and CURRENT_TIMESTAMP are not allowed: the data ends at a fixed anchor date. "
+                                          "Use explicit DATE 'YYYY-MM-DD' bounds computed from the anchor date given in the prompt.")
             if isinstance(node, exp.Anonymous):
                 raise GuardViolationError(f"Function {node.name.upper()}() is not allowed.")
             if not isinstance(node, _ALLOWED_FUNCTIONS) and not isinstance(node, (exp.Binary, exp.Unary, exp.Condition, exp.Alias)):
-                raise GuardViolationError(f"Function {node.sql_name()}() is not allowed. Use aggregates, DATE_TRUNC, CASE, COALESCE, NULLIF, ROUND and CAST.")
+                raise GuardViolationError(f"Function {node.sql_name()}() is not allowed. Use aggregates, DATE_TRUNC('week', col), CASE, "
+                                          "COALESCE, NULLIF, ROUND and CAST, and write date ranges as explicit DATE 'YYYY-MM-DD' bounds.")
 
     @staticmethod
     def _measure_rules(analysis: Analysis) -> None:
@@ -133,7 +148,7 @@ class SqlGuard:
 
     def check(self, sql: str) -> str:
         """Returns the SQL with a row cap applied, or raises GuardViolationError."""
-        stripped = sql.strip().rstrip(";")
+        stripped = _strip_fence(sql)
         try:
             statements = [s for s in sqlglot.parse(stripped, dialect=self.dialect) if s is not None]
         except sqlglot.errors.SqlglotError as e:
@@ -145,8 +160,8 @@ class SqlGuard:
             raise GuardViolationError("Only SELECT statements are allowed.")
         if any(tree.find(kind) for kind in _FORBIDDEN):
             raise GuardViolationError("Statement type not allowed.")
-        cte_names = {c.alias for c in tree.find_all(exp.CTE)}
-        illegal = {t.name for t in tree.find_all(exp.Table)} - cte_names - self.allowed
+        cte_names = {c.alias.lower() for c in tree.find_all(exp.CTE)}
+        illegal = {t.name for t in tree.find_all(exp.Table) if t.name.lower() not in cte_names} - self.allowed
         if illegal:
             raise GuardViolationError(f"Table(s) outside the governed layer: {sorted(illegal)}.")
         return cap_limit(tree, self.max_rows).sql(dialect=self.dialect)

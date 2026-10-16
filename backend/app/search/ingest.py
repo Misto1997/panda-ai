@@ -25,9 +25,10 @@ def build_index(settings: Settings, pool: PgPool | None = None) -> int:
         with pool.connection() as conn:
             conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
             row = conn.execute(_DIM_SQL).fetchone()
-            if row and row[0] != settings.embedding_dim:  # embedding model/dimension changed: the index is derived data, rebuild it
-                conn.execute("DROP TABLE semantic_docs")
-            execute_script(conn, DDL.format(dim=settings.embedding_dim))
+            with conn.transaction():  # atomic: the API never sees a moment without the table
+                if row and row[0] != settings.embedding_dim:  # embedding model/dimension changed: the index is derived data, rebuild it
+                    conn.execute("DROP TABLE semantic_docs")
+                execute_script(conn, DDL.format(dim=settings.embedding_dim))
             with conn.transaction():
                 for doc, vec in zip(docs, vectors):
                     conn.execute(

@@ -13,6 +13,17 @@ from app.core.config import Settings
 from app.core.errors import ConfigurationError, DatabaseUnavailableError
 
 
+def conn_kwargs(connect_timeout_s: float, **extra) -> dict:
+    """libpq settings shared by every pool. Cloud Run freezes CPU between requests and the VPC / AlloyDB drop idle sockets,
+    so detect dead connections quickly (keepalives, tcp_user_timeout) and never let one query hang forever (statement_timeout)."""
+    return {"autocommit": True, "connect_timeout": int(connect_timeout_s), "keepalives": 1, "keepalives_idle": 30,
+            "keepalives_interval": 10, "keepalives_count": 3, "tcp_user_timeout": 15000,
+            "options": "-c statement_timeout=15000", **extra}
+
+
+POOL_RECYCLE = {"max_idle": 300, "max_lifetime": 1800}  # seconds; replace connections before the network does it for us
+
+
 class PgPool:
     def __init__(self, url: str, *, max_size: int = 5, connect_timeout_s: float = 5.0, pool_timeout_s: float = 10.0) -> None:
         if not url:
@@ -30,7 +41,7 @@ class PgPool:
             if self._pool is None:  # min_size=0: no connection is opened until the first query, so cold starts stay fast
                 self._pool = ConnectionPool(
                     self._url, min_size=0, max_size=self._max, timeout=self._timeout, open=True,
-                    kwargs={"connect_timeout": int(self._connect), "autocommit": True, "prepare_threshold": 0})
+                    check=ConnectionPool.check_connection, kwargs=conn_kwargs(self._connect, prepare_threshold=0), **POOL_RECYCLE)
             return self._pool
 
     @contextmanager
@@ -39,10 +50,12 @@ class PgPool:
         try:
             with self._get().connection() as conn:
                 yield conn
-        except (PoolTimeout, psycopg.OperationalError) as e:
+        except (PoolTimeout, psycopg.OperationalError) as e:  # connectivity only: real SQL errors must surface as bugs, not as 503s
             raise DatabaseUnavailableError(f"database unavailable: {e}") from e
-        except psycopg.Error as e:
-            raise DatabaseUnavailableError(f"database error: {e}") from e
+
+    def ping(self) -> None:
+        with self.connection() as conn:
+            conn.execute("SELECT 1")
 
     def close(self) -> None:
         if self._pool is not None:

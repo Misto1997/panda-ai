@@ -23,7 +23,7 @@ def run_data(s: Settings, rows: int, days: int, end: str, from_duckdb: str | Non
         else:
             db_path = str(tmp_dir / "panda.duckdb")
             print(f"generating {rows:,} orders ...", flush=True)
-            generate_dataset(db_path, s.semantic_dir, rows, days, end)
+            generate_dataset(db_path, s.semantic_dir, rows, days, end, memory_limit="6GB", threads=4)
         con = duckdb.connect(db_path, read_only=True)
         try:
             if skip_load:
@@ -70,6 +70,24 @@ def run_warm(s: Settings) -> int:
     return failures
 
 
+def run_diagnose(s: Settings, ping_llm: bool) -> int:
+    """Prints every dependency check. Exit code 1 if any fails. Runs inside the VPC when executed as a Cloud Run Job."""
+    from app.container import build_container
+    from app.diagnostics import Diagnostics
+
+    container = build_container(s)
+    try:
+        report = Diagnostics(container).run(ping_llm=ping_llm)
+    finally:
+        container.close()
+    for check in report["checks"]:
+        print(f"{'PASS' if check['ok'] else 'FAIL'}  {check['name']:15s} {check['detail']}")
+        if check["hint"] and not check["ok"]:
+            print(f"      hint: {check['hint']}")
+    print("cache:", report["cache"])
+    return 0 if report["ok"] else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m app.bootstrap")
     sub = ap.add_subparsers(dest="step", required=True)
@@ -82,6 +100,8 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--parquet-dir")
     sub.add_parser(BootstrapStep.INDEX, help="build the semantic index in Postgres/AlloyDB")
     sub.add_parser(BootstrapStep.WARM, help="replay demo questions to pre-fill the cache")
+    dg = sub.add_parser(BootstrapStep.DIAGNOSE, help="check config, warehouse, database, index (add --llm for one real model call)")
+    dg.add_argument("--llm", action="store_true")
     args = ap.parse_args(argv)
     s = get_settings()
     try:
@@ -89,6 +109,8 @@ def main(argv: list[str] | None = None) -> int:
             run_data(s, args.rows, args.days, args.end, args.from_duckdb, args.parquet_dir, args.skip_load)
         elif args.step == BootstrapStep.INDEX:
             run_index(s)
+        elif args.step == BootstrapStep.DIAGNOSE:
+            return run_diagnose(s, args.llm)
         else:
             return 1 if run_warm(s) else 0
     except PandaError as e:

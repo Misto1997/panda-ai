@@ -8,7 +8,7 @@ from app.agents.contracts import SqlDraft
 from app.agents.deps import NodeDependencies
 from app.agents.state import TurnState
 from app.core.enums import CacheStatus, DocKind, IrSource, LlmTask, NodeName, PromptId, QueryMode, QueryPath
-from app.core.errors import GuardViolationError, LlmError, QueryValidationError
+from app.core.errors import GuardViolationError, LlmError, LlmUnavailableError, QueryValidationError
 from app.llm.base import LlmContext
 from app.prompts.context import SqlPromptContext
 from app.query.ir import QueryIR
@@ -107,8 +107,10 @@ class SqlPlannerNode(AgentNode):
                              payload={"sql": previous, "error": error}, render_sql=self._render)
             try:
                 draft = self.deps.llm.structured(SqlDraft, prompt, ctx)
-            except LlmError as e:
-                self.log.warning("sql generation unavailable: %s", e)
+            except LlmUnavailableError:
+                raise  # the model service itself is failing: a fallback call would fail the same way, tell the user
+            except LlmError as e:  # unparseable model output: the deterministic IR fallback may still answer
+                self.log.warning("sql generation output unusable: %s", e)
                 return None, attempt - 1
             if not draft.sql.strip():  # the model declined: not a failure to repair
                 raise QueryValidationError(draft.rationale or DECLINED)

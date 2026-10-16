@@ -40,7 +40,7 @@ class FirebaseTokenVerifier:
         from google.oauth2 import id_token
 
         try:
-            claims = id_token.verify_firebase_token(token, self._request, audience=self._project)
+            claims = id_token.verify_firebase_token(token, self._request, audience=self._project, clock_skew_in_seconds=10)
         except GoogleAuthError as e:  # transport failures while fetching certs
             raise ValueError(f"token verification failed: {e}") from e
         if claims.get("iss") != FIREBASE_ISSUER.format(project=self._project):

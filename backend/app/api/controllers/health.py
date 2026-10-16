@@ -24,4 +24,9 @@ class HealthController:
             self._c.engine.max_date(table.rollup, table.time_column)
         except Exception as e:
             raise HTTPException(503, "engine unavailable") from e
+        if self._c.pool is not None:
+            try:
+                self._c.pool.ping()
+            except Exception as e:
+                raise HTTPException(503, "database unavailable") from e
         return HealthStatus(status="ready")

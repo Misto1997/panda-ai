@@ -38,6 +38,13 @@ class LlmError(PandaError):
     code = "llm_error"
 
 
+class LlmUnavailableError(LlmError):
+    """Transport/service failure (timeout, quota, 5xx). Retrying a second model call right away would only fail the same way."""
+    code = "llm_unavailable"
+    user_facing = True
+    http_status = 503
+
+
 class CatalogError(PandaError):
     """Semantic layer files are invalid. Raised at startup so bad files never reach users."""
     code = "catalog_error"
@@ -89,3 +96,9 @@ class RequestTooLargeError(PandaError):
     code = "request_too_large"
     user_facing = True
     http_status = 413
+
+
+class ForbiddenError(PandaError):
+    code = "forbidden"
+    user_facing = True
+    http_status = 403

@@ -42,6 +42,7 @@ class Container:
     query_service: QueryService
     runner: TurnRunner
     security: Security
+    pool: PgPool | None = None
     _closers: list[Callable[[], None]] = field(default_factory=list)
 
     def close(self) -> None:
@@ -66,4 +67,4 @@ def build_container(settings: Settings | None = None) -> Container:
     runner = TurnRunner(build_graph(deps, checkpointer))
     log.info("started: llm=%s engine=%s search=%s (data anchor is resolved on first use; see /ready)", llm.name, engine.name, search.backend_name)
     closers = [engine.close, cache.close, close_checkpointer] + ([pool.close] if pool else [])
-    return Container(settings, catalog, engine, cache, llm, search, service, runner, build_security(settings, pool), closers)
+    return Container(settings, catalog, engine, cache, llm, search, service, runner, build_security(settings, pool), pool, closers)

@@ -79,7 +79,10 @@ class SqlNormalizer:
         exact = simple
         for select in selects:
             for proj in select.expressions:
-                match = self._match_metric(proj.this if isinstance(proj, exp.Alias) else proj, self._tables_of(select))
+                inner = proj.this if isinstance(proj, exp.Alias) else proj
+                match = self._match_metric(inner, self._tables_of(select))
+                if match and inner.find(exp.Cast, exp.TryCast, exp.Round):
+                    exact = False  # CAST/ROUND change the values: not interchangeable with the plain metric, so never share its cache entry
                 if match:
                     if match.id not in metrics:
                         metrics.append(match.id)
@@ -125,6 +128,9 @@ class SqlNormalizer:
 
         order_by, order_desc = self._order(root, column_metrics)
         limit = self._limit(root)
+        order = root.args.get("order")
+        if root.args.get("offset") or (order and (len(order.expressions) != 1 or order_by is None)):
+            exact = False  # OFFSET, multi-key or non-metric ordering (dimension/date) change which rows come back
         ir = None
         if metrics:
             ir = QueryIR(metrics=metrics, dimensions=dims, filters=filters, time_expr=self._time_expr(period), grain=grain,
@@ -146,6 +152,8 @@ class SqlNormalizer:
         def strip(n: exp.Expression):
             if isinstance(n, (exp.Cast, exp.TryCast, exp.Paren, exp.Round)):
                 return n.this
+            if isinstance(n, exp.Column) and n.table:  # `s.net_gmv` and `net_gmv` are the same column
+                return exp.column(n.name)
             if isinstance(n, exp.Nullif) and isinstance(n.expression, exp.Literal) and n.expression.name == "0":
                 return n.this
             return n

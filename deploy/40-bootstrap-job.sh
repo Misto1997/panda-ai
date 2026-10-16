@@ -11,7 +11,7 @@ deploy_job() {  # name, python args
     --project "${PROJECT_ID}" --region "${REGION}" --image "${API_IMAGE}" \
     --service-account "${SERVICE_ACCOUNT}" \
     --network "${VPC_NETWORK}" --subnet "${VPC_SUBNET}" --vpc-egress private-ranges-only \
-    --memory "${JOB_MEMORY:-8Gi}" --cpu 2 --max-retries 0 --task-timeout 3600s \
+    --memory "${JOB_MEMORY:-16Gi}" --cpu 2 --max-retries 0 --task-timeout 3600s \
     --command python --args="$1" \
     --set-env-vars "${API_ENV}" \
     --set-secrets "PGPASSWORD=${DB_PASSWORD_SECRET}:latest"
@@ -22,6 +22,7 @@ case "${STEP}" in
   data)  deploy_job data  "-m,app.bootstrap,data,--rows,${BOOTSTRAP_ROWS:-20000000}" ;;
   index) deploy_job index "-m,app.bootstrap,index" ;;
   warm)  deploy_job warm  "-m,app.bootstrap,warm" ;;
+  diagnose) deploy_job diagnose "-m,app.bootstrap,diagnose,--llm" ;;
   all)   "$0" data && "$0" index && "$0" warm ;;
-  *) echo "usage: $0 [data|index|warm|all]" >&2; exit 1 ;;
+  *) echo "usage: $0 [data|index|warm|diagnose|all]" >&2; exit 1 ;;
 esac

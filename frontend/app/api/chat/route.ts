@@ -7,7 +7,7 @@ export async function POST(req: Request) {
   let upstream: Response;
   try {
     upstream = await fetch(`${GATEWAY}/api/chat`, {
-      method: "POST", headers: forwardHeaders(req, { "content-type": "application/json", accept: "text/event-stream" }), body: await req.text(),
+      method: "POST", headers: forwardHeaders(req, { "content-type": "application/json", accept: "text/event-stream" }), body: await req.text(), signal: req.signal,
     });
   } catch { return unreachable(); }
   const ok = upstream.ok;  // 401/429/422 come back as JSON and must not be labelled as an event stream

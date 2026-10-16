@@ -2,6 +2,8 @@
 Standard SQL: runs unchanged on AlloyDB and Cloud SQL."""
 from __future__ import annotations
 
+import re
+
 from app.core.db import PgPool
 from app.core.enums import VectorIndexKind
 from app.llm.embeddings import Embedder
@@ -37,12 +39,17 @@ class PgVectorBackend:
         self._pool, self._embedder = pool, embedder
 
     def lexical(self, query: str, limit: int) -> list[str]:
-        sql = ("SELECT id FROM semantic_docs WHERE tsv @@ plainto_tsquery('english', %s) "
-               "ORDER BY ts_rank(tsv, plainto_tsquery('english', %s)) DESC LIMIT %s")
-        return self._fetch(sql, (query, query, limit))
+        # plainto_tsquery ANDs every word, so a natural-language question matches nothing: OR the stemmed terms instead
+        terms = sorted({t for t in re.findall(r"[a-z0-9]+", query.lower()) if len(t) > 1})
+        if not terms:
+            return []
+        tsq = " | ".join(terms)
+        sql = ("SELECT id FROM semantic_docs WHERE tsv @@ to_tsquery('english', %s) "
+               "ORDER BY ts_rank(tsv, to_tsquery('english', %s)) DESC LIMIT %s")
+        return self._fetch(sql, (tsq, tsq, limit))
 
     def vector(self, query: str, limit: int) -> list[str]:
-        vec = vector_literal(self._embedder.embed([query])[0])
+        vec = vector_literal(self._embedder.embed_query(query))
         return self._fetch("SELECT id FROM semantic_docs ORDER BY embedding <=> %s::vector LIMIT %s", (vec, limit))
 
     def _fetch(self, sql: str, params: tuple) -> list[str]:

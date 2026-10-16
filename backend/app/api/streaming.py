@@ -27,14 +27,15 @@ class ChatStreamService:
     def __init__(self, runner: TurnRunner, heartbeat_s: float) -> None:
         self._runner, self._heartbeat_s = runner, heartbeat_s
 
-    async def stream(self, request: ChatRequest, is_disconnected: Callable[[], Awaitable[bool]]) -> AsyncIterator[str]:
+    async def stream(self, request: ChatRequest, is_disconnected: Callable[[], Awaitable[bool]], owner: str = "") -> AsyncIterator[str]:
         thread_id = request.thread_id or uuid.uuid4().hex
+        state_key = f"{owner}:{thread_id}" if owner else thread_id  # conversations are private to the signed-in user
         started = time.perf_counter()
         ev = AgUiEvents(thread_id, request.run_id or uuid.uuid4().hex)
         enc = AgUiEncoder
         yield enc.encode(ev.run_started())
         updates = iterate_in_threadpool(self._runner.stream(
-            request.question, thread_id, {"force_raw": request.force_raw, "bypass_cache": request.bypass_cache}))
+            request.question, state_key, {"force_raw": request.force_raw, "bypass_cache": request.bypass_cache}))
         final: dict | None = None
         pending = asyncio.ensure_future(anext(updates, None))
         try:

@@ -27,6 +27,14 @@ class Catalog:
         except KeyError:
             raise QueryValidationError(f"Unknown metric '{metric_id}'.") from None
 
+    def find_metric(self, name: str) -> MetricSpec | None:
+        """Resolve an id, title or alias (case/space/underscore-insensitive); None if unknown."""
+        key = "".join(ch for ch in name.lower() if ch.isalnum())
+        for m in self.metrics.values():
+            if key in {"".join(ch for ch in n.lower() if ch.isalnum()) for n in (m.id, m.title, *m.aliases)}:
+                return m
+        return None
+
     def dimension(self, dim_id: str) -> DimensionSpec:
         try:
             return self.dimensions[dim_id]

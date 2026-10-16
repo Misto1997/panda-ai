@@ -94,11 +94,12 @@ PROMPTS = PromptRegistry([*PROMPTS_SQL,
     PromptTemplate(
         id=PromptId.ANSWER, owner=NodeName.RESPOND,
         system="You are a data analyst. Answer in 1-3 sentences using only the numbers provided. Bold the key figures. Do not invent numbers.",
-        user="Question: $question\nColumns: $columns\nRows (max 15): $rows"),
+        user="Question: $question\nColumns: $columns\nValue formats (a percent value is a fraction: 0.034 means 3.4%): $formats\nRows (max 15): $rows"),
     PromptTemplate(
         id=PromptId.RCA_REQUEST, owner=NodeName.RCA,
         system=("Pick the metric whose movement the user wants explained and the period to analyse.\n"
-                "Use only metric ids from the context. Default period is last_14_days.\n$context")),
+                "Use ONLY one of these metric ids: $metric_ids.\n"
+                "time_expr must be one of: $time_grammar. Default is last_14_days.\n$context")),
     PromptTemplate(
         id=PromptId.RCA_NARRATIVE, owner=NodeName.RCA,
         system=("You are a senior analyst writing a root-cause summary for an executive. Use 4-6 sentences.\n"

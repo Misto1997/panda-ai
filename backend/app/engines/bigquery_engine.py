@@ -6,6 +6,8 @@ import concurrent.futures
 import time
 from datetime import date
 
+from google.auth.exceptions import GoogleAuthError
+
 from app.core.config import Settings
 from app.core.errors import ConfigurationError, EngineError, QueryTimeoutError, QueryTooExpensiveError
 from app.core.logging import get_logger
@@ -46,12 +48,13 @@ class BigQueryEngine:
 
         bq_sql = to_bigquery(sql, self._project, self._dataset)
         config = bigquery.QueryJobConfig(maximum_bytes_billed=self._max_bytes, labels=JOB_LABELS, use_query_cache=True)
-        config.job_timeout_ms = int(timeout_s * 1000)
+        config.job_timeout_ms = int((timeout_s + 5) * 1000)  # server-side limit just above ours, so our TimeoutError is the one that fires
         started = time.perf_counter()
         job = None
         try:
             job = self._client.query(bq_sql, job_config=config, location=self._location)
-            rows = list(job.result(timeout=timeout_s))
+            result = job.result(timeout=timeout_s)  # RowIterator: carries the schema even when the job object's own schema is unset
+            rows = list(result)
         except (concurrent.futures.TimeoutError, TimeoutError) as e:
             if job is not None:
                 job.cancel()
@@ -59,8 +62,12 @@ class BigQueryEngine:
         except gexc.GoogleAPICallError as e:
             if any(m in str(e) for m in _BYTES_CAP_MARKERS):
                 raise QueryTooExpensiveError("That query would scan too much data. Narrow the period or the dimensions.") from e
+            if "timed out" in str(e).lower() or "timeout" in str(e).lower():
+                raise QueryTimeoutError(f"The query took longer than {timeout_s:.0f}s. Narrow the period or the dimensions.") from e
             raise EngineError(f"BigQuery rejected the query: {e}") from e
-        columns = [f.name for f in job.schema]
+        except (gexc.RetryError, GoogleAuthError) as e:  # retries exhausted, or credentials/transport trouble
+            raise EngineError(f"BigQuery is unreachable: {e}") from e
+        columns = [f.name for f in (result.schema or job.schema or [])]
         out = [[to_jsonable(v) for v in row.values()] for row in rows]
         stats = {"bytes_processed": job.total_bytes_processed or 0, "cache_hit": bool(job.cache_hit)}
         elapsed = (time.perf_counter() - started) * 1000
@@ -77,7 +84,7 @@ class BigQueryEngine:
             job = self._client.query(to_bigquery(sql, self._project, self._dataset), job_config=config, location=self._location)
         except gexc.BadRequest as e:  # invalid SQL: surfaced to the repair prompt
             return DryRunInfo(ok=False, error=str(e).splitlines()[0])
-        except gexc.GoogleAPICallError as e:
+        except (gexc.GoogleAPICallError, gexc.RetryError, GoogleAuthError) as e:
             raise EngineError(f"BigQuery dry run failed: {e}") from e
         return DryRunInfo(ok=True, bytes_processed=int(job.total_bytes_processed or 0))
 
@@ -102,6 +109,6 @@ class BigQueryEngine:
         try:
             rows = list(self._client.query(to_bigquery(sql, self._project, self._dataset), job_config=config,
                                            location=self._location).result(timeout=30))
-        except (gexc.GoogleAPICallError, concurrent.futures.TimeoutError) as e:
+        except (gexc.GoogleAPICallError, gexc.RetryError, GoogleAuthError, concurrent.futures.TimeoutError) as e:
             raise EngineError(f"BigQuery metadata query failed: {e}") from e
         return rows[0][0]

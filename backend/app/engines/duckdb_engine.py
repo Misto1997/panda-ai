@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
+import math
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -18,7 +19,9 @@ def to_jsonable(value):
     if isinstance(value, (date, datetime)):
         return value.isoformat()[:10]
     if isinstance(value, Decimal):
-        return float(value)
+        value = float(value)
+    if isinstance(value, float) and not math.isfinite(value):
+        return None  # NaN / Infinity are not valid JSON (browsers reject them) and mean 'undefined' for a business number
     return value
 
 

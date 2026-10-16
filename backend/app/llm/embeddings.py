@@ -19,6 +19,7 @@ class Embedder(Protocol):
     dim: int
 
     def embed(self, texts: list[str]) -> np.ndarray: ...
+    def embed_query(self, text: str) -> np.ndarray: ...
 
 
 class HashEmbedder:
@@ -29,6 +30,9 @@ class HashEmbedder:
 
     def embed(self, texts: list[str]) -> np.ndarray:
         return np.stack([self._one(t) for t in texts])
+
+    def embed_query(self, text: str) -> np.ndarray:
+        return self._one(text)
 
     def _one(self, text: str) -> np.ndarray:
         vec = np.zeros(self.dim, dtype=np.float32)
@@ -48,12 +52,30 @@ class GeminiEmbedder:
         self._client = GoogleGenerativeAIEmbeddings(model=settings.embedding_model, output_dimensionality=settings.embedding_dim,
                                                   **client_options(settings, settings.embedding_location))
 
+    BATCH = 10  # conservative: some embedding endpoints accept few inputs per request
+
     def embed(self, texts: list[str]) -> np.ndarray:
+        vectors: list[list[float]] = []
+        for i in range(0, len(texts), self.BATCH):
+            chunk = texts[i:i + self.BATCH]
+            try:
+                vectors += self._client.embed_documents(chunk)
+            except Exception as batch_error:  # an endpoint that only accepts one input per request: retry one by one
+                if len(chunk) == 1:
+                    raise LlmError(f"embedding call failed: {batch_error}") from batch_error
+                try:
+                    vectors += [self._client.embed_documents([t])[0] for t in chunk]
+                except Exception as e:
+                    raise LlmError(f"embedding call failed: {e}") from e
+        arr = np.array(vectors, dtype=np.float32)
+        return arr / np.linalg.norm(arr, axis=1, keepdims=True)
+
+    def embed_query(self, text: str) -> np.ndarray:
         try:
-            arr = np.array(self._client.embed_documents(texts), dtype=np.float32)
+            vec = np.array(self._client.embed_query(text), dtype=np.float32)
         except Exception as e:
             raise LlmError(f"embedding call failed: {e}") from e
-        return arr / np.linalg.norm(arr, axis=1, keepdims=True)
+        return vec / np.linalg.norm(vec)
 
 
 def create_embedder(settings: Settings) -> Embedder:

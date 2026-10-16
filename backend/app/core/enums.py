@@ -224,6 +224,7 @@ class BootstrapStep(StrEnum):
     DATA = "data"
     INDEX = "index"
     WARM = "warm"
+    DIAGNOSE = "diagnose"
 
 
 class CacheLayer(StrEnum):

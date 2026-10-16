@@ -285,3 +285,52 @@ def test_service_starts_before_data_is_loaded(container):
     svc = QueryService(container.catalog, EmptyEngine(), container.cache, container.settings)  # must not raise
     with pytest.raises(EngineError):
         _ = svc.anchor
+
+
+# ---- regressions from the pre-deploy review ----
+def _key(container, sql):
+    from app.cache.semantic_cache import SemanticCache
+    prepared = container.query_service.prepare_sql(sql)
+    return SemanticCache.intent_key(prepared.intent, prepared.mode)
+
+
+BASE = "SELECT zone, SUM(net_gmv) AS net_gmv FROM sales WHERE order_date >= DATE '2026-09-01' AND order_date < DATE '2026-10-01' GROUP BY zone"
+
+
+def test_cache_keys_never_merge_queries_that_return_different_data(container):
+    plain = _key(container, BASE)
+    assert _key(container, BASE.replace("SUM(net_gmv)", "ROUND(SUM(net_gmv), 0)")) != plain      # ROUND changes the values
+    assert _key(container, BASE.replace("SUM(net_gmv)", "CAST(SUM(net_gmv) AS BIGINT)")) != plain
+    assert _key(container, BASE + " ORDER BY zone DESC LIMIT 2") != _key(container, BASE + " LIMIT 2")
+    assert _key(container, BASE + " ORDER BY net_gmv DESC LIMIT 2 OFFSET 1") != _key(container, BASE + " ORDER BY net_gmv DESC LIMIT 2")
+    # but genuine paraphrases still share an entry
+    assert _key(container, BASE.replace("zone", "zone AS z", 1).replace("GROUP BY zone", "GROUP BY zone")) is not None
+    aliased = BASE.replace("FROM sales", "FROM sales s").replace("SUM(net_gmv)", "SUM(s.net_gmv)").replace("order_date", "s.order_date")
+    assert _key(container, aliased) == plain
+
+
+def test_guard_accepts_fenced_sql_and_rejects_current_date(container):
+    svc = container.query_service
+    assert svc.prepare_sql("```sql\n" + BASE + ";\n```").sources == {"sales": "agg_sales_daily"}
+    with pytest.raises(GuardViolationError, match="CURRENT_DATE"):
+        svc.prepare_sql("SELECT SUM(net_gmv) AS n FROM sales WHERE order_date >= CURRENT_DATE - INTERVAL 7 DAY")
+
+
+def test_time_and_metric_names_are_forgiving(container):
+    from app.query.period import normalize_time_expr
+    assert [normalize_time_expr(x) for x in ("last 7 days", "Past 2 weeks", "last-month", "LAST_30_DAYS")] == \
+        ["last_7_days", "last_14_days", "last_month", "last_30_days"]
+    cat = container.catalog
+    assert cat.find_metric("Net GMV").id == "net_gmv" and cat.find_metric("average selling price").id == "asp" and cat.find_metric("nope") is None
+
+
+def test_hybrid_search_survives_one_half_failing(container):
+    from app.core.errors import LlmError
+    from app.search.hybrid import HybridSearch
+
+    class VectorDown:
+        name = "x"
+        def lexical(self, q, n): return ["net_gmv"]
+        def vector(self, q, n): raise LlmError("embedding outage")
+
+    assert [d.id for d in HybridSearch(container.catalog, VectorDown()).search("net gmv", 3)][0] == "net_gmv"

@@ -58,6 +58,8 @@ Speed demo: tick **Force raw table scan** (skip the rollup) or **Bypass semantic
 
 ## Tracing and debugging
 
+Full guide (logs, verifying the index, BigQuery and database checks, auth, quota, cold starts, cost): **[docs/DEBUGGING.md](docs/DEBUGGING.md)**. Quick self-check: `make doctor` locally, `make gcp-diagnose` on Cloud Run.
+
 ```bash
 make ask Q="why did visits drop in the last 14 days?"            # live step trace in the terminal
 make ask Q="net gmv by zone last 7 days" DEBUG=1                 # + DEBUG logs, generated SQL, model output

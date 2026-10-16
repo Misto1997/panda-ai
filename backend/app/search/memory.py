@@ -41,5 +41,5 @@ class MemoryBackend:
         return [self._docs[i].id for i in order if scores[i] > 0]
 
     def vector(self, query: str, limit: int) -> list[str]:
-        sims = self._vectors @ self._embedder.embed([query])[0]
+        sims = self._vectors @ self._embedder.embed_query(query)
         return [self._docs[i].id for i in np.argsort(sims)[::-1][:limit]]

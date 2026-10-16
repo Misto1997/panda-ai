@@ -59,4 +59,11 @@ BUILD_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 for role in roles/artifactregistry.writer roles/logging.logWriter roles/storage.objectViewer; do
   gcloud projects add-iam-policy-binding "${PROJECT_ID}" --member="serviceAccount:${BUILD_SA}" --role="${role}" --condition=None --quiet >/dev/null
 done
+# Gen2 Cloud Functions (kill-switch) build with this account too. Docs say it needs cloudbuild.builds.builder (includes Artifact Registry
+# and Storage access) plus logging.logWriter. UNVERIFIED: the exact builder account depends on org policy / project age; check the console
+# (Cloud Build > Settings) or pass --build-service-account to gcloud functions deploy if builds fail with permission errors.
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" --member="serviceAccount:${BUILD_SA}" --role=roles/cloudbuild.builds.builder --condition=None --quiet >/dev/null
+echo "  + roles/cloudbuild.builds.builder (gen2 function builds)"
+# Eventarc/Pub/Sub trigger delivery: the kill-switch SA gets roles/eventarc.eventReceiver in killswitch/deploy.sh (it creates that SA).
+# UNVERIFIED: projects created before April 2021 also need the Pub/Sub service agent to hold roles/iam.serviceAccountTokenCreator.
 echo "done."

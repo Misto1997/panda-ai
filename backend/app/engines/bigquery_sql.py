@@ -20,15 +20,22 @@ def _fix_date_trunc(node: exp.Expression) -> exp.Expression:
     return node
 
 
+def _safe_divide(node: exp.Expression) -> exp.Expression:
+    """DuckDB yields NULL/inf on division by zero, BigQuery raises at run time (and a dry run cannot catch it): use SAFE_DIVIDE."""
+    if isinstance(node, exp.Div) and not isinstance(node.expression, exp.Literal):
+        return exp.SafeDivide(this=node.this, expression=node.expression)
+    return node
+
+
 def to_bigquery(sql: str, project: str, dataset: str) -> str:
     try:
         tree = sqlglot.parse_one(sql, read=SOURCE_DIALECT)
-    except sqlglot.errors.ParseError as e:
+    except sqlglot.errors.SqlglotError as e:
         raise EngineError(f"cannot translate SQL for BigQuery: {e}") from e
-    ctes = {c.alias for c in tree.find_all(exp.CTE)}
+    ctes = {c.alias.lower() for c in tree.find_all(exp.CTE)}
     for table in tree.find_all(exp.Table):
-        if table.name not in ctes and not table.args.get("db"):
+        if table.name.lower() not in ctes and not table.args.get("db"):
             table.set("this", exp.to_identifier(table.name, quoted=True))  # project ids contain hyphens: must be quoted
             table.set("db", exp.to_identifier(dataset, quoted=True))
             table.set("catalog", exp.to_identifier(project, quoted=True))
-    return tree.transform(_fix_date_trunc).sql(dialect=TARGET_DIALECT)
+    return tree.transform(_fix_date_trunc).transform(_safe_divide).sql(dialect=TARGET_DIALECT)

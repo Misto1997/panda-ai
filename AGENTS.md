@@ -1,6 +1,6 @@
 # AGENTS.md
 
-PANDA AI (PANDA = Prompt-driven Analytics & Natural Data Access): natural-language analytics over a governed semantic layer, with guarded text-to-SQL and root-cause analysis (RCA). Built for the Google AI Builder Cup (theme: Future of Work & Enterprise Productivity). Deep dive: `docs/ARCHITECTURE.md`, `docs/FRONTEND_GUIDE.md`, `docs/PHASE2_PLAN.md`, deployment: `docs/GCP_SETUP.md`.
+PANDA AI (PANDA = Prompt-driven Analytics & Natural Data Access): natural-language analytics over a governed semantic layer, with guarded text-to-SQL and root-cause analysis (RCA). Built for the Google AI Builder Cup (theme: Future of Work & Enterprise Productivity). Deep dive: `docs/ARCHITECTURE.md`, `docs/FRONTEND_GUIDE.md`, `docs/PHASE2_PLAN.md`, deployment: `docs/GCP_SETUP.md`, debugging: `docs/DEBUGGING.md`, config: `docs/CONFIGURATION.md`.
 
 ## Hard rules
 
@@ -45,6 +45,7 @@ make setup        # venv + npm install
 make data         # 20M-order DuckDB at backend/data/panda.duckdb; ARGS="--rows 2000000" for smaller
 make api          # gateway :8000 (reload)     make api-debug   # DEBUG logs + SQL + model payloads
 make web          # UI :3000                    make typecheck   # tsc --noEmit
+make doctor | gcp-diagnose   # dependency self-check (local | inside the VPC as a Cloud Run Job)
 make test         # backend pytest           make bench   # golden questions through the full graph (LLM_PROVIDER=gemini to grade a real model)
 make gcp-setup | gcp-build | gcp-deploy | gcp-bootstrap | gcp-budget | gcp-smoke   # see docs/GCP_SETUP.md (run where gcloud is logged in)
 make ask Q="why did visits drop?" [DEBUG=1]    # one turn in the terminal with a step trace

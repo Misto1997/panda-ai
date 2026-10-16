@@ -102,3 +102,24 @@ def test_ddl_scripts_are_split_into_single_statements():
     execute_script(conn, DDL.format(dim=768))
     execute_script(conn, INDEX_DDL[VectorIndexKind.SCANN])
     assert len(conn.sql) == 5 and all(";" not in stmt for stmt in conn.sql)
+
+
+def test_admin_endpoints_are_restricted_in_firebase_mode():
+    from types import SimpleNamespace
+
+    from app.core.enums import AuthMode
+    from app.core.errors import ForbiddenError
+    from app.security.auth import AuthUser
+    from app.security.service import admin_user
+
+    def request(mode, email, admins):
+        settings = SimpleNamespace(auth_mode=mode, admin_email_list=[a for a in admins])
+        security = SimpleNamespace(authenticator=SimpleNamespace(authenticate=lambda header: AuthUser("u", email)))
+        container = SimpleNamespace(settings=settings, security=security)
+        return SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(container=container)), headers={})
+
+    assert admin_user(request(AuthMode.DEV, "dev@localhost", [])).email == "dev@localhost"
+    assert admin_user(request(AuthMode.FIREBASE, "Boss@Example.com", ["boss@example.com"])).email == "Boss@Example.com"
+    import pytest
+    with pytest.raises(ForbiddenError):
+        admin_user(request(AuthMode.FIREBASE, "random@example.com", ["boss@example.com"]))

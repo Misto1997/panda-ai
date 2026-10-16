@@ -35,7 +35,7 @@ def create_app(container: Container | None = None) -> FastAPI:
 
     app = FastAPI(title="PANDA gateway", version="0.2.0", lifespan=lifespan)
     app.add_middleware(RequestIdMiddleware)
-    settings_origins = (container.settings.cors_origins if container else None) or ["http://localhost:3000"]
+    settings_origins = (container.settings if container else get_settings()).cors_origins
     app.add_middleware(CORSMiddleware, allow_origins=settings_origins, allow_methods=["*"], allow_headers=["*"], expose_headers=["X-Request-Id"])
     app.add_middleware(BodyLimitMiddleware, max_bytes=(container.settings if container else get_settings()).max_request_bytes)  # outermost
     register_error_handlers(app)

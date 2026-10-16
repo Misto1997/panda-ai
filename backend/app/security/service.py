@@ -42,3 +42,17 @@ def authenticated_user(request: Request) -> AuthUser:
 def current_user(request: Request) -> AuthUser:
     """FastAPI dependency for read-only endpoints (no IP bucket charge)."""
     return _security(request).authenticator.authenticate(request.headers.get("authorization"))
+
+
+def admin_user(request: Request) -> AuthUser:
+    """FastAPI dependency for /api/admin/*: dev mode is open; otherwise a signed-in user whose email is in ADMIN_EMAILS."""
+    from app.core.enums import AuthMode
+    from app.core.errors import ForbiddenError
+
+    container = request.app.state.container
+    user = _security(request).authenticator.authenticate(request.headers.get("authorization"))
+    if container.settings.auth_mode == AuthMode.DEV:
+        return user
+    if user.email.lower() not in container.settings.admin_email_list:
+        raise ForbiddenError("This endpoint is restricted to administrators.")
+    return user

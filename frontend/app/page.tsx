@@ -35,10 +35,11 @@ export default function Home() {
   const end = useRef<HTMLDivElement>(null);
   const ready = !auth.loading && (!auth.enabled || Boolean(auth.email));
 
+  const resetConversation = () => { thread.current = undefined; setTurns([]); };
   const refreshMeta = async () => {
     try {
       const r = await fetch("/api/meta", { headers: await auth.authHeaders() });
-      if (r.ok) setMeta(await r.json());
+      if (r.ok) { const m = await r.json(); if (m && typeof m === "object") setMeta(m); } // a failed refresh keeps existing meta
     } catch { /* sidebar facts are optional */ }
   };
   const refreshMe = async () => {
@@ -114,7 +115,7 @@ export default function Home() {
           <input type="checkbox" checked={forceRaw} onChange={(e) => setForceRaw(e.target.checked)} /> Force raw table scan <span className="muted">(skip rollup)</span></label>
         <label title="Ignore cached intents and results for this question, to compare latency with and without the cache">
           <input type="checkbox" checked={bypass} onChange={(e) => setBypass(e.target.checked)} /> Bypass semantic cache</label>
-        <button className="link" onClick={() => { thread.current = undefined; setTurns([]); }}>New conversation</button>
+        <button className="link" onClick={resetConversation}>New conversation</button>
         {meta && (
           <div className="status">
             <h3>Runtime</h3>
@@ -129,7 +130,7 @@ export default function Home() {
         {auth.enabled && (
           <div className="topbar">
             {me?.remaining_today !== undefined && me.daily_limit !== undefined && <span>{me.remaining_today} / {me.daily_limit} questions left today</span>}
-            <span>{auth.email}</span><button onClick={auth.signOut}>Sign out</button>
+            <span>{auth.email}</span><button onClick={() => { resetConversation(); void auth.signOut(); }}>Sign out</button>
           </div>)}
         {metaWaiting && <div className="banner wake">Waking up PANDA AI (first request after idle can take ~10-15 s)</div>}
         <div className="feed">
