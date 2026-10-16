@@ -64,6 +64,6 @@ def build_container(settings: Settings | None = None) -> Container:
                             vocabulary=build_vocabulary(catalog))
     checkpointer, close_checkpointer = create_checkpointer(settings)
     runner = TurnRunner(build_graph(deps, checkpointer))
-    log.info("ready: llm=%s engine=%s search=%s anchor=%s", llm.name, engine.name, search.backend_name, service.anchor)
+    log.info("started: llm=%s engine=%s search=%s (data anchor is resolved on first use; see /ready)", llm.name, engine.name, search.backend_name)
     closers = [engine.close, cache.close, close_checkpointer] + ([pool.close] if pool else [])
     return Container(settings, catalog, engine, cache, llm, search, service, runner, build_security(settings, pool), closers)

@@ -17,7 +17,7 @@ from app.query.guard import LogicalGuard, SqlGuard
 from app.query.ir import QueryIR
 from app.query.logical import LogicalSchema
 from app.query.normalizer import Intent, SqlNormalizer
-from app.query.period import PeriodResolver
+from app.query.period import LazyPeriodResolver
 from app.query.render import LogicalSqlRenderer
 from app.query.rewriter import LogicalRewriter
 from app.semantic.catalog import Catalog
@@ -59,10 +59,13 @@ class QueryService:
         self.logical_guard = LogicalGuard(self.schema, settings.max_rows, settings.sql_max_joins, settings.sql_max_chars)
         self.rewriter = LogicalRewriter(self.schema, self.sql_dialect)
         anchor_table = catalog.anchor_table()
-        self.anchor: date = engine.max_date(anchor_table.rollup, anchor_table.time_column)
-        self.resolver = PeriodResolver(self.anchor)
+        self.resolver = LazyPeriodResolver(lambda: engine.max_date(anchor_table.rollup, anchor_table.time_column))
         self.normalizer = SqlNormalizer(catalog, self.resolver)
         self.renderer = LogicalSqlRenderer(catalog, self.resolver)
+
+    @property
+    def anchor(self) -> date:
+        return self.resolver.anchor
 
     # ---- text-to-sql path ----
     def prepare_sql(self, logical_sql: str, mode: QueryMode = QueryMode.AUTO) -> PreparedSql:

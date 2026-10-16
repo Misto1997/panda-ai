@@ -270,3 +270,18 @@ def test_end_to_end_meta_path_attempts_and_plan_cache(container):
     assert again["meta"]["path"] == "cache" and again["meta"]["cache"] == "hit" and again["table"]["rows"] == first["table"]["rows"]
     raw = ask("Net GMV by marketplace last 14 days", "t-path-3", force_raw=True)
     assert raw["meta"]["sources"] == {"sales": "fact_sales"} and raw["meta"]["cache"] == "miss"  # forced raw never reuses the rollup entry
+
+
+def test_service_starts_before_data_is_loaded(container):
+    """Cloud Run must be able to start (and report not-ready) while the warehouse tables do not exist yet."""
+    from app.core.errors import EngineError
+    from app.query.service import QueryService
+
+    class EmptyEngine:
+        name, dialect = "stub", "duckdb"
+        def max_date(self, table, column):
+            raise EngineError("table not found")
+
+    svc = QueryService(container.catalog, EmptyEngine(), container.cache, container.settings)  # must not raise
+    with pytest.raises(EngineError):
+        _ = svc.anchor

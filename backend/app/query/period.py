@@ -3,6 +3,7 @@ Intervals are half-open [start, end). 'today' is anchor+1, so 'yesterday' is the
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, timedelta
 
@@ -71,3 +72,20 @@ class PeriodResolver:
             "last_month": Period((month_start - timedelta(days=1)).replace(day=1), month_start),
             "all_time": Period(date(2000, 1, 1), today),
         }
+
+
+class LazyPeriodResolver(PeriodResolver):
+    """Looks the anchor date up on first use, so the service can start (and report not-ready) before any data is loaded."""
+
+    def __init__(self, load_anchor: Callable[[], date]) -> None:
+        self._load, self._anchor = load_anchor, None
+
+    @property
+    def anchor(self) -> date:
+        if self._anchor is None:
+            self._anchor = self._load()  # raises EngineError while the tables do not exist; retried on the next call
+        return self._anchor
+
+    @property
+    def today(self) -> date:
+        return self.anchor + timedelta(days=1)
