@@ -6,7 +6,7 @@ from dotenv import dotenv_values
 from pydantic import Field, ValidationError, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict, YamlConfigSettingsSource
 
-from app.core.enums import (AppEnv, AuthMode, EngineKind, LlmProvider, SearchBackendKind, StoreKind, VectorIndexKind)
+from app.core.enums import (AppEnv, AuthMode, EmbeddingProvider, EngineKind, LlmProvider, SearchBackendKind, StoreKind, VectorIndexKind)
 from app.core.errors import ConfigurationError
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -39,7 +39,8 @@ class Settings(BaseSettings):
     llm_provider: LlmProvider = LlmProvider.MOCK
     gemini_model: str = "gemini-3.8-flash"      # ModelTier.FAST (unverified id: confirm in the Vertex model garden)
     gemini_pro_model: str = "gemini-3.8-flash"  # ModelTier.REASONING; point at a Pro model if budget allows
-    embedding_model: str = "gemini-embedding-001"
+    embedding_provider: EmbeddingProvider = EmbeddingProvider.AUTO  # hash = no embedding quota needed (rebuild the index after changing)
+    embedding_model: str = "gemini-embedding-2"
     llm_max_calls_per_turn: int = 8             # hard cap on model calls inside one chat turn (runaway-loop guard)
     # Vertex AI / Gemini Enterprise Agent Platform: keyless via Application Default Credentials (Cloud Run service account).
     google_genai_use_vertexai: bool = False

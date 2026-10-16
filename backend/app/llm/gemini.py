@@ -51,6 +51,9 @@ class GeminiLlm:
 
         if isinstance(error, (OutputParserException, ValueError)):
             return LlmError(f"{what}: {error}")
+        text = str(error).lower()
+        if "429" in text or "resource exhausted" in text or "resource_exhausted" in text:
+            return LlmUnavailableError(f"{what}: {error}", details={"rate_limited": True})
         return LlmUnavailableError(f"{what}: {error}")
 
     @staticmethod

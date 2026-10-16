@@ -30,7 +30,7 @@ export VPC_SUBNET="default"
 # Models (Vertex, location global). Confirm the ids exist in your project.
 export GEMINI_MODEL="gemini-3.8-flash"
 export GEMINI_PRO_MODEL="gemini-3.8-flash"
-export EMBEDDING_MODEL="gemini-embedding-001"
+export EMBEDDING_MODEL="gemini-embedding-2"
 export EMBEDDING_LOCATION=""                    # empty = global; set e.g. asia-southeast1 if the embedding model is not served globally
 
 # Firebase Auth (public web config: Firebase console > Project settings > Your apps)
@@ -55,3 +55,6 @@ export BUDGET_TOPIC="panda-budget-alerts"
 
 # Google accounts allowed to call /api/admin/* (diagnostics, cache clear) on the deployed API. Comma-separated.
 export ADMIN_EMAILS="devs.vibing@gmail.com"
+
+# auto = Gemini embeddings. Set to "hash" to run without any embedding quota (offline hashing; rebuild the index with STEP=index afterwards).
+export EMBEDDING_PROVIDER="auto"

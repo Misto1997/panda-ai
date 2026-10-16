@@ -123,3 +123,30 @@ def test_admin_endpoints_are_restricted_in_firebase_mode():
     import pytest
     with pytest.raises(ForbiddenError):
         admin_user(request(AuthMode.FIREBASE, "random@example.com", ["boss@example.com"]))
+
+
+def test_embedding_rate_limit_is_retried_with_backoff_and_never_fans_out(monkeypatch):
+    import numpy as np
+
+    from app.core.errors import LlmError
+    from app.llm import embeddings as emb
+
+    sleeps = []
+    monkeypatch.setattr(emb.time, "sleep", sleeps.append)
+
+    class Flaky:
+        def __init__(self, fail_times): self.fail, self.calls = fail_times, 0
+        def embed_documents(self, texts):
+            self.calls += 1
+            if self.calls <= self.fail:
+                raise RuntimeError("429 Resource exhausted, please try again later.")
+            return [[1.0, 0.0] for _ in texts]
+
+    e = emb.GeminiEmbedder.__new__(emb.GeminiEmbedder)
+    e._client = Flaky(2)
+    assert e.embed(["a", "b"]).shape == (2, 2) and sleeps[:2] == [4.0, 8.0]      # two 429s, then success after backoff
+
+    e._client = Flaky(99)  # permanently limited: fail loudly after bounded retries, one call per attempt (no burst of single calls)
+    with pytest.raises(LlmError):
+        e.embed(["a", "b", "c"])
+    assert e._client.calls == emb.GeminiEmbedder.INDEX_ATTEMPTS

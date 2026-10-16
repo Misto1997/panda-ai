@@ -59,3 +59,11 @@ def test_unknown_profile_fails_loudly(fresh):
     fresh.setenv("PANDA_PROFILE", "nope")
     with pytest.raises(ConfigurationError, match="not found"):
         get_settings()
+
+
+def test_embedding_provider_can_be_forced_offline_without_touching_the_llm(fresh):
+    from app.llm.embeddings import HashEmbedder, create_embedder
+    fresh.setenv("EMBEDDING_PROVIDER", "hash")
+    fresh.setenv("LLM_PROVIDER", "mock")
+    s = get_settings()
+    assert isinstance(create_embedder(s), HashEmbedder)

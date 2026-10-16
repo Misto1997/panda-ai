@@ -127,6 +127,12 @@ class LlmProvider(StrEnum):
     GEMINI = "gemini"
 
 
+class EmbeddingProvider(StrEnum):
+    AUTO = "auto"      # follow llm_provider: gemini embeddings with the Gemini LLM, offline hash embeddings with the mock
+    GEMINI = "gemini"  # Vertex / Gemini embedding model (needs embedding quota)
+    HASH = "hash"      # deterministic offline hashing: no quota, lower semantic quality; index and API must use the same value
+
+
 class ModelTier(StrEnum):
     FAST = "fast"            # routing, planning, short answers
     REASONING = "reasoning"  # RCA narrative
