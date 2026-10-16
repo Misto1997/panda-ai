@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 
-from app.core.enums import ValueFormat
 from app.core.logging import get_logger
 from app.query.service import QueryService
 from app.rca.checks import CheckContext, run_checks
@@ -14,7 +13,6 @@ from app.rca.hypotheses import HypothesisContext, run_hypotheses
 from app.rca.models import PeriodValue, RcaReport
 from app.rca.reader import SegmentReader, relative_change
 from app.semantic.catalog import Catalog
-from app.semantic.models import PolicySpec, RcaTreeSpec
 
 log = get_logger("rca")
 SQL_SAMPLE = 3

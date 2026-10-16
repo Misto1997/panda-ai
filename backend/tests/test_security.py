@@ -126,7 +126,6 @@ def test_admin_endpoints_are_restricted_in_firebase_mode():
 
 
 def test_embedding_rate_limit_is_retried_with_backoff_and_never_fans_out(monkeypatch):
-    import numpy as np
 
     from app.core.errors import LlmError
     from app.llm import embeddings as emb

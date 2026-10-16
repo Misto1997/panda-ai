@@ -237,3 +237,10 @@ deploy/env.sh
 # Python template ignores "lib/" which swallowed frontend/lib; those are source files
 !frontend/lib/
 !frontend/lib/**
+
+.env.*
+!.env.example
+!**/.env.example
+.DS_Store
+probe*.json
+

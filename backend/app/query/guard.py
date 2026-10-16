@@ -125,10 +125,6 @@ class LogicalGuard:
             raise GuardViolationError("COUNT(*) and COUNT(column) count physical rows, which differ between rollup and raw tables. "
                                       "Use SUM(orders) for order counts or COUNT(DISTINCT <dimension column>).")
 
-    # ---- shared helpers ----
-    def enforce_limit(self, tree: exp.Expression) -> exp.Expression:
-        return cap_limit(tree, self.max_rows)
-
 
 def cap_limit(tree: exp.Expression, max_rows: int) -> exp.Expression:
     out = tree.copy()

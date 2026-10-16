@@ -19,10 +19,6 @@ _REGISTRY: dict[EngineKind, Callable[[Settings], QueryEngine]] = {
 }
 
 
-def register_engine(kind: EngineKind, factory: Callable[[Settings], QueryEngine]) -> None:
-    _REGISTRY[kind] = factory
-
-
 def create_engine(settings: Settings) -> QueryEngine:
     try:
         return _REGISTRY[settings.engine](settings)

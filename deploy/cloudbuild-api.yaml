@@ -1,6 +1,6 @@
 # Run from the repo root:  gcloud builds submit --config deploy/cloudbuild-api.yaml --substitutions=_IMAGE=...,_TAG=...
 substitutions:
-  _IMAGE: asia-southeast1-docker.pkg.dev/ai-builder-hackathon/panda/panda-api
+  _IMAGE: asia-southeast1-docker.pkg.dev/YOUR_PROJECT_ID/panda/panda-api
   _TAG: latest
 steps:
   - name: gcr.io/cloud-builders/docker

@@ -70,7 +70,6 @@ def test_embedding_provider_can_be_forced_offline_without_touching_the_llm(fresh
 
 
 def test_gemini_requests_use_the_configured_thinking_level():
-    from app.core.config import Settings
     from langchain_google_genai import ChatGoogleGenerativeAI
 
     s = Settings(gemini_thinking_level="low")

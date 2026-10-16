@@ -8,7 +8,6 @@ from app.core.enums import CacheStatus, NodeName, ResponseType, ValueFormat
 from app.presentation.narrative import answer_summary
 from app.schemas.chat import ChatResult, ResultMeta, TablePayload
 
-LLM_ROWS = 15
 DATE_COLUMN = "date"
 
 

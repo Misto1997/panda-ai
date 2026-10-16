@@ -41,7 +41,7 @@ class _FakeRows(list):
 
 class _FakeJob:
     total_bytes_processed, cache_hit = 1234, False
-    schema = None  # regression: on real jobs this is unset; only the RowIterator returned by result() has the schema
+    schema = None  # on real jobs this is unset; only the RowIterator returned by result() has the schema
 
     def result(self, timeout=None):
         return _FakeRows([type("R", (), {"values": lambda self: ("West", 1.5)})()])
@@ -111,7 +111,7 @@ def test_turn_llm_budget():
         _current.set(None)
 
 
-# ---- regressions from the pre-deploy review ----
+# ---- edge cases ----
 def test_division_is_safe_and_cte_names_are_case_insensitive():
     out = to_bigquery("WITH cur AS (SELECT SUM(a) AS a, SUM(b) AS b FROM agg_sales_daily) SELECT a / b AS r, a / 2 AS h FROM CUR", "p", "d")
     assert "SAFE_DIVIDE(a, b)" in out and "a / 2" in out          # variable denominators guarded, literal ones untouched

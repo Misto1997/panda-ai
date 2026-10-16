@@ -34,7 +34,7 @@ class MockLlm:
     def structured(self, schema: type[T], prompt: Prompt, context: LlmContext | None = None) -> T:
         ctx = context or LlmContext()
         q = ctx.question.lower()
-        builder = {"RouteDecision": self._route, "RcaRequest": self._rca_request, "QueryIR": self._query_ir,
+        builder = {"RcaRequest": self._rca_request, "QueryIR": self._query_ir,
                    "SqlDraft": self._sql_draft}.get(schema.__name__)
         if builder is None:
             raise NotImplementedError(schema.__name__)

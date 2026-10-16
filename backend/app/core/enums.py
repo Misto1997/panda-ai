@@ -196,7 +196,6 @@ class CheckKind(StrEnum):
 
 
 class PromptId(StrEnum):
-    ROUTE = "route"
     JUDGE = "judge"
     PLAN = "plan"
     ANSWER = "answer"

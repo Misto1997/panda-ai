@@ -1,5 +1,5 @@
 # Copy to deploy/env.sh (gitignored) and fill the placeholders. NO secrets here: the DB password is prompted by 00-setup.sh.
-export PROJECT_ID="ai-builder-hackathon"
+export PROJECT_ID="YOUR_PROJECT_ID"
 export REGION="asia-southeast1"
 export SERVICE_ACCOUNT_NAME="panda-api"
 export SERVICE_ACCOUNT="${SERVICE_ACCOUNT_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -34,9 +34,9 @@ export EMBEDDING_MODEL="gemini-embedding-2"
 export EMBEDDING_LOCATION=""                    # empty = global; set e.g. asia-southeast1 if the embedding model is not served globally
 
 # Firebase Auth (public web config: Firebase console > Project settings > Your apps)
-export FIREBASE_PROJECT_ID="ai-builder-hackathon"
+export FIREBASE_PROJECT_ID="YOUR_PROJECT_ID"
 export FIREBASE_API_KEY="REPLACE"
-export FIREBASE_AUTH_DOMAIN="ai-builder-hackathon.firebaseapp.com"
+export FIREBASE_AUTH_DOMAIN="YOUR_PROJECT_ID.firebaseapp.com"
 export FIREBASE_APP_ID="REPLACE"
 
 # Limits
@@ -54,7 +54,7 @@ export BUDGET_AMOUNT="100"                       # in the billing account curren
 export BUDGET_TOPIC="panda-budget-alerts"
 
 # Google accounts allowed to call /api/admin/* (diagnostics, cache clear) on the deployed API. Comma-separated.
-export ADMIN_EMAILS="devs.vibing@gmail.com"
+export ADMIN_EMAILS="you@example.com"
 
 # auto = Gemini embeddings. Set to "hash" to run without any embedding quota (offline hashing; rebuild the index with STEP=index afterwards).
 export EMBEDDING_PROVIDER="auto"

@@ -71,7 +71,6 @@ def test_guard_caps_rows_and_allows_ctes():
 # ---------------------------------------------------------------------------------------------------------------------
 # Text-to-SQL: logical guard, rewriter, normaliser, cache stores, planner flow, semantic examples, rollup/raw invariants
 # ---------------------------------------------------------------------------------------------------------------------
-import dataclasses
 
 from app.agents.contracts import SqlDraft
 from app.agents.deps import NodeDependencies
@@ -133,7 +132,7 @@ def test_prepared_sql_is_physical_capped_and_aliased(container):
 def test_normaliser_gives_equivalent_sql_one_cache_key(container):
     svc = container.query_service
     a = svc.prepare_sql(sales_by("zone"))
-    b = svc.prepare_sql(f"select zone, sum(net_gmv) as net_gmv from sales where order_date < DATE '2026-10-01' and order_date >= DATE '2026-09-24' group by zone")
+    b = svc.prepare_sql("select zone, sum(net_gmv) as net_gmv from sales where order_date < DATE '2026-10-01' and order_date >= DATE '2026-09-24' group by zone")
     assert a.intent.exact and b.intent.exact and a.intent.ir.time_expr == "last_7_days"
     assert SemanticCache.intent_key(a.intent, QueryMode.AUTO) == SemanticCache.intent_key(b.intent, QueryMode.AUTO)
     assert SemanticCache.intent_key(a.intent, QueryMode.AUTO) != SemanticCache.intent_key(a.intent, QueryMode.RAW)
@@ -287,7 +286,7 @@ def test_service_starts_before_data_is_loaded(container):
         _ = svc.anchor
 
 
-# ---- regressions from the pre-deploy review ----
+# ---- edge cases ----
 def _key(container, sql):
     from app.cache.semantic_cache import SemanticCache
     prepared = container.query_service.prepare_sql(sql)
